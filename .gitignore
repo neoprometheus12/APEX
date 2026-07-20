@@ -1,0 +1,15 @@
+# Python
+backend/venv/
+backend/__pycache__/
+backend/agents/__pycache__/
+**/__pycache__/
+*.pyc
+
+# Secrets
+backend/.env
+
+# Session/runtime data (regenerates automatically)
+backend/data/adk_sessions.db
+
+# OS/editor
+.DS_Store

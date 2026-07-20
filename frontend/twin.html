@@ -1,0 +1,1077 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>APEX — Supply Chain Digital Twin</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+:root{
+  /* APEX light palette — shared with the Live Map (index.html) */
+  --bg:#F4F6F9;--panel:#FFFFFF;--panel2:#EEF1F6;--line:#DCE2EA;--line-soft:#E6EAF0;
+  --ink:#24272C;--ink-soft:#3D414A;
+  --accent:#C8791E;--accent-soft:#A6620F;--accent-dim:#E8A23D;--accent-tint:rgba(200,121,30,.10);
+  --critical:#C23B4B;--critical-soft:#9E2F3D;--critical-tint:rgba(194,59,75,.09);
+  --safe:#2F6FE0;--safe-soft:#1F52AD;--safe-tint:rgba(47,111,224,.09);
+  --reserve:#7C3AED;--reserve-soft:#6023C9;--reserve-tint:rgba(124,58,237,.09);
+  --text:#16202E;--text-dim:#54627A;--text-faint:#8993A6;
+  --shadow:0 2px 10px rgba(22,32,46,.06);--shadow-lg:0 12px 40px rgba(22,32,46,.14);
+  --radius:10px;
+  /* Back-compat aliases: this page's original names mapped onto the shared palette */
+  --amber:var(--accent);--amber-soft:var(--accent-soft);
+  --red:var(--critical);--red-soft:var(--critical-soft);
+  --teal:var(--safe);--teal-soft:var(--safe-soft);
+  --purple:var(--reserve);--green:#1E8449;--green-soft:#27AE60;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg);color:var(--text);font-family:'IBM Plex Sans',sans-serif;height:100vh;overflow:hidden;display:flex;flex-direction:column;}
+.ticker{background:var(--panel2);border-bottom:1px solid var(--line);height:28px;overflow:hidden;display:flex;align-items:center;font-family:'IBM Plex Mono';font-size:10px;flex-shrink:0;}
+.ticker-label{background:var(--purple);color:#fff;padding:0 10px;height:100%;display:flex;align-items:center;font-weight:600;font-size:10px;letter-spacing:1px;white-space:nowrap;flex-shrink:0;}
+.ticker-content{flex:1;overflow:hidden;}
+.ticker-scroll{display:inline-block;white-space:nowrap;padding-left:100%;animation:ticker 50s linear infinite;}
+@keyframes ticker{from{transform:translateX(0);}to{transform:translateX(-100%);}}
+.ticker-item{margin-right:60px;color:var(--text-dim);}
+.ticker-item.high{color:var(--red-soft);}
+.ticker-item.ok{color:var(--teal-soft);}
+header{display:flex;justify-content:space-between;align-items:center;padding:0 24px;background:var(--panel);border-bottom:1px solid var(--line);height:56px;flex-shrink:0;}
+.brand{display:flex;align-items:center;gap:14px;}
+.brand-icon{width:32px;height:32px;border:2px solid var(--purple);border-radius:50%;display:flex;align-items:center;justify-content:center;}
+.brand-icon::after{content:'';width:8px;height:8px;border-radius:50%;background:var(--purple);box-shadow:0 0 10px var(--purple);}
+.brand h1{font-family:'Space Grotesk';font-size:20px;font-weight:700;letter-spacing:1px;}
+.brand p{font-size:10px;color:var(--text-faint);letter-spacing:2px;text-transform:uppercase;margin-top:1px;}
+.header-stats{display:flex;align-items:center;}
+.h-stat{text-align:center;padding:0 16px;border-left:1px solid var(--line);}
+.h-stat .hl{font-size:9px;color:var(--text-faint);text-transform:uppercase;letter-spacing:1px;}
+.h-stat .hv{font-family:'IBM Plex Mono';font-size:15px;font-weight:600;margin-top:2px;}
+.live-badge{display:flex;align-items:center;gap:6px;background:rgba(127,119,221,0.1);border:1px solid rgba(127,119,221,0.3);border-radius:20px;padding:4px 12px;font-size:11px;color:var(--purple);margin-left:16px;}
+.live-dot{width:6px;height:6px;border-radius:50%;background:var(--purple);animation:blink 2s infinite;}
+@keyframes blink{0%{box-shadow:0 0 0 0 rgba(127,119,221,0.6);}70%{box-shadow:0 0 0 8px transparent;}100%{box-shadow:0 0 0 0 transparent;}}
+nav{display:flex;gap:4px;padding:8px 20px;background:var(--panel);border-bottom:1px solid var(--line);flex-shrink:0;align-items:center;}
+.nav-btn{padding:7px 18px;border-radius:7px;border:1px solid transparent;background:transparent;color:var(--text-dim);font-family:'IBM Plex Sans';font-size:12px;cursor:pointer;transition:all 0.2s;}
+.nav-btn:hover{background:var(--panel2);color:var(--text);border-color:var(--line);}
+.nav-btn.active{background:var(--ink);color:#fff;font-weight:600;}
+.sidebar-toggle{margin-left:auto;padding:6px 14px;border-radius:7px;border:1px solid var(--line);background:transparent;color:var(--text-dim);font-size:11.5px;cursor:pointer;display:flex;align-items:center;gap:6px;transition:all .15s;}
+.sidebar-toggle:hover{border-color:var(--text-faint);color:var(--text);}
+.main{display:flex;flex:1;overflow:hidden;}
+#map{flex:1;position:relative;}
+
+/* MODE CONTROLS — positioned below zoom */
+.map-controls{
+  position:absolute;top:80px;left:12px;z-index:1000;
+  display:flex;flex-direction:column;gap:6px;
+}
+.ctrl-btn{
+  background:rgba(255,255,255,0.95);border:1px solid var(--line);box-shadow:var(--shadow-lg);
+  color:var(--text-dim);padding:10px 16px;border-radius:8px;
+  font-size:12px;cursor:pointer;font-family:'IBM Plex Sans';
+  transition:all 0.2s;backdrop-filter:blur(8px);white-space:nowrap;
+  display:flex;align-items:center;gap:8px;min-width:180px;
+}
+.ctrl-btn:hover{border-color:var(--amber);color:var(--amber);}
+.ctrl-btn.active{background:rgba(217,119,6,0.2);border-color:var(--amber);color:var(--amber);font-weight:600;}
+.ctrl-btn .ctrl-desc{font-size:9px;color:var(--text-faint);display:block;margin-top:2px;font-weight:400;}
+
+/* LAYER TOGGLE */
+.layer-toggle{
+  position:absolute;top:80px;left:210px;z-index:1000;
+  background:rgba(255,255,255,0.95);border:1px solid var(--line);box-shadow:var(--shadow-lg);
+  border-radius:10px;padding:12px;backdrop-filter:blur(8px);
+  min-width:160px;
+}
+.lt-title{font-size:9px;text-transform:uppercase;letter-spacing:1px;color:var(--text-faint);margin-bottom:10px;}
+.lt-item{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--text-dim);margin-bottom:8px;cursor:pointer;}
+.lt-item:last-child{margin-bottom:0;}
+.lt-check{width:14px;height:14px;border-radius:3px;border:1px solid var(--line);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:9px;}
+.lt-check.on{background:var(--teal);border-color:var(--teal);color:#fff;}
+
+/* MAP OVERLAY for What-If instruction */
+.map-overlay{
+  position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  z-index:999;background:rgba(255,255,255,0.94);border:2px solid var(--amber);box-shadow:var(--shadow-lg);
+  border-radius:16px;padding:24px 36px;text-align:center;
+  backdrop-filter:blur(12px);display:none;pointer-events:none;
+}
+.map-overlay.show{display:block;}
+.map-overlay h3{font-family:'Space Grotesk';font-size:18px;color:var(--amber);margin-bottom:8px;}
+.map-overlay p{font-size:13px;color:var(--text-dim);line-height:1.6;}
+
+/* SCENARIO LOADING */
+.scenario-loading{
+  position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  z-index:999;background:rgba(255,255,255,0.94);border:2px solid var(--red);box-shadow:var(--shadow-lg);
+  border-radius:16px;padding:24px 36px;text-align:center;
+  backdrop-filter:blur(12px);display:none;
+}
+.scenario-loading.show{display:block;}
+
+/* LEGEND */
+.map-legend{
+  position:absolute;bottom:16px;left:16px;z-index:900;
+  background:rgba(255,255,255,0.92);border:1px solid var(--line);box-shadow:var(--shadow-lg);
+  border-radius:10px;padding:12px 14px;backdrop-filter:blur(8px);
+}
+.legend-title{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--text-faint);margin-bottom:10px;}
+.legend-item{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--text-dim);margin-bottom:6px;}
+.legend-item:last-child{margin-bottom:0;}
+.l-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;}
+
+/* SIDEBAR */
+.sidebar{width:340px;background:var(--panel);border-left:1px solid var(--line);overflow-y:auto;display:flex;flex-direction:column;flex-shrink:0;}
+.s-section{padding:14px 16px;border-bottom:1px solid var(--line);}
+.s-title{font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--text-faint);margin-bottom:12px;}
+.alert-banner{padding:10px 16px;font-size:11px;font-weight:600;text-align:center;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:center;gap:8px;}
+.alert-LOW{background:rgba(42,157,143,0.1);color:var(--teal-soft);}
+.alert-MEDIUM{background:rgba(217,119,6,0.1);color:var(--amber-soft);}
+.alert-HIGH{background:rgba(192,57,43,0.12);color:var(--red-soft);}
+.alert-CRITICAL{background:rgba(192,57,43,0.2);color:#FF6B6B;}
+.alert-WHATIF{background:rgba(217,119,6,0.15);color:var(--amber-soft);}
+.alert-SCENARIO{background:rgba(192,57,43,0.15);color:var(--red-soft);}
+.stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+.stat-card{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px;}
+.stat-label{font-size:9px;color:var(--text-faint);text-transform:uppercase;letter-spacing:0.5px;}
+.stat-value{font-family:'IBM Plex Mono';font-size:16px;font-weight:600;margin-top:4px;}
+.stat-sub{font-size:9px;color:var(--text-faint);margin-top:2px;}
+.node-item{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);cursor:pointer;transition:all 0.15s;}
+.node-item:last-child{border-bottom:none;}
+.node-item:hover{background:rgba(217,119,6,0.05);margin:0 -16px;padding:8px 16px;}
+.node-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;}
+.node-info{flex:1;}
+.node-name{font-size:12px;font-weight:500;}
+.node-sub{font-size:10px;color:var(--text-faint);margin-top:1px;}
+.node-stress{font-family:'IBM Plex Mono';font-size:13px;font-weight:600;}
+.spr-item{padding:8px 0;border-bottom:1px solid var(--line);}
+.spr-item:last-child{border-bottom:none;}
+.spr-name{font-size:12px;font-weight:500;margin-bottom:4px;}
+.spr-bar-track{height:6px;background:var(--line);border-radius:3px;overflow:hidden;margin:4px 0;}
+.spr-bar-fill{height:100%;border-radius:3px;transition:width 1s ease;}
+.spr-nums{display:flex;justify-content:space-between;font-size:10px;color:var(--text-faint);font-family:'IBM Plex Mono';}
+.whatif-panel{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:12px;}
+.whatif-title{font-size:11px;font-weight:500;margin-bottom:8px;color:var(--amber-soft);}
+.whatif-item{font-size:11px;color:var(--text-dim);padding:4px 0;display:flex;justify-content:space-between;}
+.whatif-val{font-family:'IBM Plex Mono';font-weight:600;}
+.scenario-impact-panel{background:var(--bg);border:1px solid var(--red);border-radius:8px;padding:12px;}
+.leaflet-popup-content-wrapper{background:var(--panel)!important;border:1px solid var(--line)!important;border-radius:10px!important;color:var(--text)!important;box-shadow:0 8px 32px rgba(0,0,0,0.5)!important;}
+.leaflet-popup-tip{background:var(--panel)!important;}
+.popup-title{font-family:'Space Grotesk';font-size:14px;font-weight:600;margin-bottom:8px;}
+.popup-row{display:flex;justify-content:space-between;font-size:11px;color:var(--text-dim);padding:5px 0;border-bottom:1px solid var(--line);}
+.popup-row:last-child{border-bottom:none;}
+.popup-btn{display:block;width:100%;margin-top:10px;padding:7px;background:rgba(192,57,43,0.1);border:1px solid var(--red);border-radius:6px;color:var(--red-soft);font-size:11px;cursor:pointer;text-align:center;font-family:'IBM Plex Sans';}
+.popup-btn:hover{background:rgba(192,57,43,0.2);}
+.popup-btn-online{background:rgba(42,157,143,0.1);border-color:var(--teal);color:var(--teal-soft);}
+::-webkit-scrollbar{width:4px;}
+::-webkit-scrollbar-thumb{background:var(--line);border-radius:2px;}
+.leaflet-container{background:#E4E9F0!important;}
+.leaflet-tile{filter:saturate(.35) brightness(1.06) contrast(.96);}
+
+/* ── OPERATOR AGENT CHAT ── */
+.op-open-btn{position:absolute;top:16px;right:16px;z-index:1150;background:var(--reserve);color:#fff;border:none;border-radius:20px;padding:9px 16px;font-size:12px;font-weight:600;cursor:pointer;box-shadow:var(--shadow-lg);display:flex;align-items:center;gap:7px;}
+.op-open-btn.hidden{display:none;}
+.op-open-btn .dot{width:7px;height:7px;border-radius:50%;background:#fff;animation:blink 1.6s infinite;}
+.op-panel{position:absolute;top:16px;right:16px;width:372px;max-height:min(82vh,640px);z-index:1200;background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow-lg);display:flex;flex-direction:column;overflow:hidden;transition:opacity .3s ease;}
+.op-panel.hidden{opacity:0;pointer-events:none;transform:translateX(410px);transition:transform .3s ease,opacity .3s ease;}
+.op-head{padding:11px 14px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;background:var(--panel2);cursor:move;user-select:none;}
+.op-head .grip{color:var(--text-faint);font-size:13px;letter-spacing:-2px;}
+.op-badge{width:28px;height:28px;border-radius:50%;border:2px solid var(--reserve);display:flex;align-items:center;justify-content:center;font-size:14px;}
+.op-head h3{font-family:'Space Grotesk';font-size:14px;font-weight:700;flex:1;}
+.op-head .op-sub{font-size:9px;color:var(--text-faint);text-transform:uppercase;letter-spacing:.6px;}
+.op-x{border:none;background:transparent;color:var(--text-dim);cursor:pointer;font-size:16px;}
+.op-kpi{display:flex;gap:6px;padding:10px 12px;border-bottom:1px solid var(--line);background:var(--bg);}
+.op-kpi .k{flex:1;text-align:center;}
+.op-kpi .kl{font-size:8px;text-transform:uppercase;letter-spacing:.6px;color:var(--text-faint);}
+.op-kpi .kv{font-family:'IBM Plex Mono';font-size:16px;font-weight:700;margin-top:2px;}
+.op-log{flex:1 1 auto;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:10px;min-height:90px;}
+.op-msg{font-size:12px;line-height:1.55;border-radius:9px;padding:9px 11px;max-width:92%;word-wrap:break-word;}
+.op-msg.user{align-self:flex-end;background:var(--ink);color:#fff;}
+.op-msg.agent{align-self:flex-start;background:var(--bg);border:1px solid var(--line);color:var(--text);}
+.op-msg .mode{font-size:8.5px;color:var(--text-faint);text-transform:uppercase;letter-spacing:.5px;margin-top:7px;display:block;}
+.op-act{margin-top:8px;padding-top:8px;border-top:1px dashed var(--line);}
+.op-act .a{font-size:10.5px;color:var(--text-dim);padding:3px 0;display:flex;gap:7px;line-height:1.4;}
+.op-act .a b{color:var(--reserve-soft);font-family:'IBM Plex Mono';font-size:9px;text-transform:uppercase;flex-shrink:0;padding-top:1px;}
+.op-typing{align-self:flex-start;color:var(--text-faint);font-size:11px;font-style:italic;}
+.op-suggest{display:flex;flex-wrap:wrap;gap:5px;padding:0 12px 8px;}
+.op-chip{font-size:10px;border:1px solid var(--line);background:var(--bg);color:var(--text-dim);border-radius:14px;padding:4px 9px;cursor:pointer;transition:all .15s;}
+.op-chip:hover{border-color:var(--reserve);color:var(--reserve-soft);}
+.op-input-row{display:flex;gap:6px;padding:10px 12px;border-top:1px solid var(--line);}
+.op-input-row input{flex:1;border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:12px;font-family:inherit;background:var(--bg);color:var(--text);}
+.op-input-row input:focus{outline:none;border-color:var(--reserve);}
+.op-input-row button{border:none;background:var(--reserve);color:#fff;border-radius:8px;padding:0 14px;cursor:pointer;font-size:14px;}
+
+/* ── DRAGGABLE / COLLAPSIBLE FLOATING PANELS ── */
+.mgr-panel .panel-grip{display:flex;align-items:center;gap:6px;padding:4px 9px;cursor:move;user-select:none;font-size:9px;font-weight:600;color:var(--text-faint);text-transform:uppercase;letter-spacing:.6px;background:var(--panel);border:1px solid var(--line);border-radius:8px;box-shadow:var(--shadow);margin-bottom:5px;}
+.mgr-panel .panel-grip .pg-title{flex:1;white-space:nowrap;}
+.mgr-panel .panel-grip .pg-move{color:var(--text-faint);letter-spacing:-2px;font-size:12px;}
+.mgr-panel .panel-grip .pg-collapse{border:none;background:transparent;color:var(--text-dim);cursor:pointer;font-size:15px;line-height:1;padding:0 3px;}
+.mgr-panel.panel-collapsed{background:transparent!important;border:none!important;box-shadow:none!important;padding:0!important;}
+.mgr-panel.panel-collapsed > *:not(.panel-grip){display:none!important;}
+/* sidebar hide */
+.sidebar.collapsed{display:none;}
+</style>
+</head>
+<body>
+
+<div class="ticker">
+  <div class="ticker-label">🔗 DIGITAL TWIN</div>
+  <div class="ticker-content">
+    <div class="ticker-scroll" id="ticker-scroll">
+      <span class="ticker-item">India Energy Supply Chain Digital Twin — 18 refineries · 8 ports · 3 SPR · 13 pipelines — Live stress propagation</span>
+    </div>
+  </div>
+</div>
+
+<header>
+  <div class="brand">
+    <div class="brand-icon"></div>
+    <div><h1>APEX</h1><p>Supply Chain Digital Twin — Page 3</p></div>
+  </div>
+  <div class="header-stats">
+    <div class="h-stat"><div class="hl">Active Nodes</div><div class="hv" id="h-nodes" style="color:var(--teal-soft)">35</div></div>
+    <div class="h-stat"><div class="hl">Stressed</div><div class="hv" id="h-stressed" style="color:var(--red-soft)">0</div></div>
+    <div class="h-stat"><div class="hl">Brent Price</div><div class="hv" id="h-flow" style="color:var(--amber-soft)">—</div></div>
+    <div class="h-stat"><div class="hl">SPR Cover</div><div class="hv" id="h-spr" style="color:var(--purple)">9.5 days</div></div>
+    <div class="live-badge"><div class="live-dot"></div>TWIN ACTIVE</div>
+  </div>
+</header>
+
+<nav>
+  <button class="nav-btn" onclick="location.href='index.html'">🗺 Live Map</button>
+  <button class="nav-btn" onclick="location.href='scenario.html'">⚡ Scenario Modeller</button>
+  <button class="nav-btn active">🔗 Digital Twin</button>
+  <button class="nav-btn" onclick="location.href='business.html'">💼 Business Impact</button>
+  <button class="sidebar-toggle" id="sb-toggle" onclick="toggleTwinSidebar()">▸ Hide panel</button>
+</nav>
+
+<div class="main">
+  <div id="map">
+    <div class="map-controls">
+      <button class="ctrl-btn active" id="btn-normal" onclick="setMode('normal')">
+        🟢 Normal State
+        <span class="ctrl-desc">All nodes operating normally</span>
+      </button>
+      <button class="ctrl-btn" id="btn-scenario" onclick="applyScenario()">
+        ⚡ Apply Scenario
+        <span class="ctrl-desc">Fetch & apply live disruption</span>
+      </button>
+      <button class="ctrl-btn" id="btn-whatif" onclick="setMode('whatif')">
+        🔧 What-If Mode
+        <span class="ctrl-desc">Click any refinery → offline</span>
+      </button>
+      <button class="ctrl-btn" id="btn-vessels" onclick="toggleVessels()">
+        🛢 Live Tankers (AIS)
+        <span class="ctrl-desc" id="vessel-tag">Show inbound crude vessels</span>
+      </button>
+      <button class="ctrl-btn" onclick="resetNetwork()">↺ Reset Network</button>
+    </div>
+
+    <div class="layer-toggle">
+      <div class="lt-title">Map Layers</div>
+      <div class="lt-item" onclick="toggleLayer('refineries')"><div class="lt-check on" id="lc-refineries">✓</div><span>Refineries</span></div>
+      <div class="lt-item" onclick="toggleLayer('ports')"><div class="lt-check on" id="lc-ports">✓</div><span>Import Ports</span></div>
+      <div class="lt-item" onclick="toggleLayer('spr')"><div class="lt-check on" id="lc-spr">✓</div><span>SPR Locations</span></div>
+      <div class="lt-item" onclick="toggleLayer('pipelines')"><div class="lt-check on" id="lc-pipelines">✓</div><span>Pipelines</span></div>
+      <div class="lt-item" onclick="toggleLayer('demand')"><div class="lt-check on" id="lc-demand">✓</div><span>Demand Centers</span></div>
+      <div class="lt-item" onclick="toggleLayer('wellheads')"><div class="lt-check on" id="lc-wellheads">✓</div><span>Wellheads</span></div>
+    </div>
+
+    <!-- What-If instruction overlay -->
+    <div class="map-overlay" id="whatif-overlay">
+      <h3>🔧 What-If Mode Active</h3>
+      <p>Click any refinery on the map to take it offline.<br>Watch stress propagate through the network.</p>
+    </div>
+
+    <!-- Scenario loading overlay -->
+    <div class="scenario-loading" id="scenario-loading">
+      <h3 style="color:var(--red-soft);font-family:'Space Grotesk';font-size:16px;margin-bottom:8px;">⚡ Fetching Scenario...</h3>
+      <p style="font-size:12px;color:var(--text-dim);">Running Agent 2 → ML model + Gemini</p>
+    </div>
+
+    <div class="map-legend">
+      <div class="legend-title">Network Legend</div>
+      <div class="legend-item"><div class="l-dot" style="background:var(--amber-soft);"></div>Refinery (normal)</div>
+      <div class="legend-item"><div class="l-dot" style="background:var(--red-soft);"></div>Refinery (stressed)</div>
+      <div class="legend-item"><div class="l-dot" style="background:#666;"></div>Refinery (offline)</div>
+      <div class="legend-item"><div class="l-dot" style="background:var(--teal-soft);"></div>Import Port</div>
+      <div class="legend-item"><div class="l-dot" style="background:var(--purple);"></div>SPR Location</div>
+      <div class="legend-item"><div class="l-dot" style="background:#52BE80;"></div>Domestic Wellhead</div>
+      <div class="legend-item"><div class="l-dot" style="background:#E8DAEF;opacity:0.7"></div>Demand Center</div>
+      <div class="legend-item"><div style="width:20px;height:2px;background:var(--amber);flex-shrink:0;"></div>Active pipeline</div>
+      <div class="legend-item"><div class="l-dot" style="background:#2F6FE0;"></div>Tanker (AIS)</div>
+      <div class="legend-item"><div class="l-dot" style="border:2px solid #7C3AED;background:transparent;"></div>Agent focus</div>
+    </div>
+
+    <!-- OPERATOR AGENT -->
+    <button class="op-open-btn" id="op-open" onclick="toggleOperator(true)"><span class="dot"></span>🤖 Operator Agent</button>
+    <div class="op-panel hidden" id="op-panel">
+      <div class="op-head" id="op-head">
+        <div class="op-badge">🤖</div>
+        <div style="flex:1;"><h3>Twin Operator</h3><div class="op-sub">ADK agent · flow sim · drag to move</div></div>
+        <span class="grip">⠿</span>
+        <button class="op-x" onclick="toggleOperator(false)">✕</button>
+      </div>
+      <div class="op-kpi" id="op-kpi">
+        <div class="k"><div class="kl">Network</div><div class="kv" id="op-kpi-health">—</div></div>
+        <div class="k"><div class="kl">Supply Served</div><div class="kv" id="op-kpi-served">—</div></div>
+        <div class="k"><div class="kl">Cities at Risk</div><div class="kv" id="op-kpi-risk">—</div></div>
+      </div>
+      <div class="op-log" id="op-log">
+        <div class="op-msg agent">I'm the Twin Operator. Ask what happens if a refinery fails or a shipping corridor closes — I'll simulate the live flow network and recommend mitigations, then act on the map.<span class="mode">Grounded in the max-flow simulation</span></div>
+      </div>
+      <div class="op-suggest">
+        <div class="op-chip" onclick="opAsk('What happens if the Strait of Hormuz closes?')">Hormuz closes?</div>
+        <div class="op-chip" onclick="opAsk('Jamnagar is offline — what do we do?')">Jamnagar down?</div>
+        <div class="op-chip" onclick="opAsk('Which refineries are most critical?')">Most critical?</div>
+        <div class="op-chip" onclick="opAsk('Is the network healthy right now?')">Health check</div>
+      </div>
+      <div class="op-input-row">
+        <input id="op-input" placeholder="Ask the operator…" onkeydown="if(event.key==='Enter'){opAsk(this.value);this.value='';}">
+        <button onclick="const i=document.getElementById('op-input');opAsk(i.value);i.value='';">➤</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="sidebar">
+    <div id="alert-banner" class="alert-banner alert-LOW">
+      <span>⬤</span><span>NETWORK: NORMAL OPERATING STATE</span>
+    </div>
+
+    <div class="s-section">
+      <div class="s-title">Network Overview</div>
+      <div class="stat-grid">
+        <div class="stat-card"><div class="stat-label">Total Refining</div><div class="stat-value" style="color:var(--amber-soft)">250 MMTPA</div><div class="stat-sub">18 refineries</div></div>
+        <div class="stat-card"><div class="stat-label">Utilization</div><div class="stat-value" id="utilization" style="color:var(--teal-soft)">104%</div><div class="stat-sub">Above nameplate</div></div>
+        <div class="stat-card"><div class="stat-label">Crude Import</div><div class="stat-value" style="color:var(--amber-soft)">4.8 MBD</div><div class="stat-sub">88% of total</div></div>
+        <div class="stat-card"><div class="stat-label">Domestic</div><div class="stat-value" style="color:var(--green-soft)">0.6 MBD</div><div class="stat-sub">Mumbai High + KG</div></div>
+      </div>
+    </div>
+
+    <!-- Scenario Impact — shown when Apply Scenario clicked -->
+    <div class="s-section" id="scenario-section" style="display:none;">
+      <div class="s-title">⚡ Active Scenario Impact</div>
+      <div id="scenario-impact"></div>
+    </div>
+
+    <!-- What-If Results — shown in What-If mode -->
+    <div class="s-section" id="whatif-section" style="display:none;">
+      <div class="s-title">🔧 What-If Analysis</div>
+      <div class="whatif-panel" id="whatif-panel">
+        <div class="whatif-title">Click any refinery on the map to simulate it going offline</div>
+      </div>
+    </div>
+
+    <div class="s-section">
+      <div class="s-title">Refinery Network Status</div>
+      <div id="refinery-list"></div>
+    </div>
+
+    <div class="s-section">
+      <div class="s-title">Strategic Petroleum Reserves</div>
+      <div id="spr-list"></div>
+    </div>
+
+    <div class="s-section">
+      <div class="s-title">Data Sources</div>
+      <div style="font-size:10px;color:var(--text-faint);line-height:1.8;font-family:'IBM Plex Mono';">
+        <div><span style="color:var(--teal-soft)">✓</span> PPAC — Refinery capacities</div>
+        <div><span style="color:var(--teal-soft)">✓</span> PNGRB — Pipeline routes</div>
+        <div><span style="color:var(--teal-soft)">✓</span> ISPRL — SPR data</div>
+        <div><span style="color:var(--teal-soft)">✓</span> Agent 1 — Live risk</div>
+        <div><span style="color:var(--teal-soft)">✓</span> Agent 2 — Scenario stress</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const API='http://localhost:8000';
+let map,twinState=null,scenarioData=null;
+let currentMode='normal';
+let offlineNodes=new Set();
+let layers={refineries:true,ports:true,spr:true,pipelines:true,demand:true,wellheads:true};
+let nodeMarkers={};
+let pipelineLayers=[];
+
+const REFINERIES=[
+  {id:'jamnagar',name:'Jamnagar',company:'Reliance',lat:22.47,lng:70.06,capacity:62,mmtpa:62,state:'Gujarat',crude_source:'Gulf (85%)'},
+  {id:'jamnagar_sez',name:'Jamnagar SEZ',company:'Reliance',lat:22.45,lng:70.04,capacity:35,mmtpa:35,state:'Gujarat',crude_source:'Gulf (85%)'},
+  {id:'panipat',name:'Panipat',company:'IOCL',lat:29.39,lng:76.97,capacity:15,mmtpa:15,state:'Haryana',crude_source:'Mixed'},
+  {id:'mathura',name:'Mathura',company:'IOCL',lat:27.49,lng:77.67,capacity:8,mmtpa:8,state:'UP',crude_source:'Mixed'},
+  {id:'barauni',name:'Barauni',company:'IOCL',lat:25.47,lng:86.00,capacity:6,mmtpa:6,state:'Bihar',crude_source:'Domestic+Import'},
+  {id:'paradip',name:'Paradip',company:'IOCL',lat:20.32,lng:86.60,capacity:15,mmtpa:15,state:'Odisha',crude_source:'Mixed'},
+  {id:'haldia',name:'Haldia',company:'IOCL',lat:22.03,lng:88.07,capacity:7.5,mmtpa:7.5,state:'WB',crude_source:'Import'},
+  {id:'digboi',name:'Digboi',company:'IOCL',lat:27.39,lng:95.62,capacity:0.65,mmtpa:0.65,state:'Assam',crude_source:'Domestic'},
+  {id:'guwahati',name:'Guwahati',company:'IOCL',lat:26.14,lng:91.74,capacity:1,mmtpa:1,state:'Assam',crude_source:'Domestic'},
+  {id:'mumbai_bpcl',name:'Mumbai BPCL',company:'BPCL',lat:19.01,lng:72.85,capacity:12,mmtpa:12,state:'Maharashtra',crude_source:'Mixed'},
+  {id:'kochi',name:'Kochi',company:'BPCL',lat:9.93,lng:76.26,capacity:15.5,mmtpa:15.5,state:'Kerala',crude_source:'Gulf (90%)'},
+  {id:'bina',name:'Bina',company:'BPCL',lat:23.99,lng:78.17,capacity:7.8,mmtpa:7.8,state:'MP',crude_source:'Mixed'},
+  {id:'vizag',name:'Vizag',company:'HPCL',lat:17.69,lng:83.22,capacity:8.3,mmtpa:8.3,state:'AP',crude_source:'Import'},
+  {id:'mumbai_hpcl',name:'Mumbai Mahul',company:'HPCL',lat:19.05,lng:72.88,capacity:6.5,mmtpa:6.5,state:'Maharashtra',crude_source:'Domestic+Import'},
+  {id:'bathinda',name:'Bathinda',company:'HPCL-Mittal',lat:30.21,lng:74.95,capacity:9,mmtpa:9,state:'Punjab',crude_source:'Mixed'},
+  {id:'chennai',name:'Chennai',company:'CPCL',lat:13.07,lng:80.27,capacity:10.5,mmtpa:10.5,state:'TN',crude_source:'Import'},
+  {id:'numaligarh',name:'Numaligarh',company:'NRL',lat:26.66,lng:93.68,capacity:3,mmtpa:3,state:'Assam',crude_source:'Domestic'},
+  {id:'tatipaka',name:'Tatipaka',company:'ONGC',lat:16.81,lng:81.73,capacity:0.083,mmtpa:0.083,state:'AP',crude_source:'Domestic'},
+];
+
+const PORTS=[
+  {id:'mundra',name:'Mundra Port',lat:22.84,lng:69.72,state:'Gujarat',capacity_mmtpa:70},
+  {id:'jnpt',name:'JNPT Mumbai',lat:18.95,lng:72.95,state:'Maharashtra',capacity_mmtpa:20},
+  {id:'paradip_port',name:'Paradip Port',lat:20.25,lng:86.68,state:'Odisha',capacity_mmtpa:25},
+  {id:'kochi_port',name:'Kochi Port',lat:9.96,lng:76.24,state:'Kerala',capacity_mmtpa:15},
+  {id:'vizag_port',name:'Vizag Port',lat:17.69,lng:83.28,state:'AP',capacity_mmtpa:20},
+  {id:'chennai_port',name:'Chennai Port',lat:13.09,lng:80.29,state:'TN',capacity_mmtpa:18},
+  {id:'mangalore_port',name:'Mangalore Port',lat:12.87,lng:74.84,state:'Karnataka',capacity_mmtpa:12},
+  {id:'kandla',name:'Kandla Port',lat:23.00,lng:70.22,state:'Gujarat',capacity_mmtpa:30},
+];
+
+const SPR_LOCATIONS=[
+  {id:'spr_vizag',name:'Vizag SPR',lat:17.72,lng:83.30,capacity_mmt:1.33,days:2.4,state:'AP'},
+  {id:'spr_mangalore',name:'Mangalore SPR',lat:12.92,lng:74.82,capacity_mmt:1.5,days:2.7,state:'Karnataka'},
+  {id:'spr_padur',name:'Padur SPR',lat:13.10,lng:75.02,capacity_mmt:2.5,days:4.4,state:'Karnataka'},
+];
+
+const WELLHEADS=[
+  {id:'mumbai_high',name:'Mumbai High',company:'ONGC',lat:19.10,lng:71.50,production_mbd:0.28,state:'Offshore'},
+  {id:'kg_basin',name:'KG Basin',company:'ONGC/Reliance',lat:16.00,lng:82.00,production_mbd:0.08,state:'AP Offshore'},
+  {id:'rajasthan',name:'Rajasthan Fields',company:'Cairn/Vedanta',lat:27.20,lng:71.50,production_mbd:0.17,state:'Rajasthan'},
+  {id:'assam',name:'Assam Fields',company:'OIL India',lat:27.10,lng:94.60,production_mbd:0.07,state:'Assam'},
+  {id:'gujarat_onshore',name:'Gujarat Onshore',company:'ONGC',lat:22.30,lng:72.50,production_mbd:0.05,state:'Gujarat'},
+];
+
+const DEMAND_CENTERS=[
+  {id:'delhi',name:'Delhi NCR',lat:28.61,lng:77.21,demand_mbd:0.42,pop_m:32},
+  {id:'mumbai_d',name:'Mumbai Metro',lat:19.08,lng:72.88,demand_mbd:0.28,pop_m:21},
+  {id:'chennai_d',name:'Chennai',lat:13.08,lng:80.27,demand_mbd:0.18,pop_m:11},
+  {id:'bengaluru',name:'Bengaluru',lat:12.97,lng:77.59,demand_mbd:0.15,pop_m:13},
+  {id:'kolkata',name:'Kolkata',lat:22.57,lng:88.36,demand_mbd:0.14,pop_m:15},
+  {id:'hyderabad',name:'Hyderabad',lat:17.38,lng:78.49,demand_mbd:0.12,pop_m:10},
+];
+
+const PIPELINES=[
+  {from:[22.84,69.72],to:[29.39,76.97],name:'Mundra-Panipat Crude',type:'crude',flow:8,color:'#D97706'},
+  {from:[22.84,69.72],to:[22.47,70.06],name:'Mundra-Jamnagar Crude',type:'crude',flow:15,color:'#D97706'},
+  {from:[19.05,72.88],to:[22.47,70.06],name:'Mumbai-Jamnagar',type:'crude',flow:5,color:'#D97706'},
+  {from:[20.25,86.68],to:[20.32,86.60],name:'Paradip Port-Refinery',type:'crude',flow:8,color:'#D97706'},
+  {from:[23.00,70.22],to:[30.21,74.95],name:'Kandla-Bathinda Crude',type:'crude',flow:6,color:'#D97706'},
+  {from:[22.47,70.06],to:[28.61,77.21],name:'Jamnagar-Delhi Product',type:'product',flow:12,color:'#2A9D8F'},
+  {from:[22.47,70.06],to:[19.08,72.88],name:'Jamnagar-Mumbai Product',type:'product',flow:8,color:'#2A9D8F'},
+  {from:[29.39,76.97],to:[28.61,77.21],name:'Panipat-Delhi Product',type:'product',flow:6,color:'#2A9D8F'},
+  {from:[20.32,86.60],to:[17.38,78.49],name:'Paradip-Hyderabad Product',type:'product',flow:5,color:'#2A9D8F'},
+  {from:[9.93,76.26],to:[13.08,80.27],name:'Kochi-Chennai Product',type:'product',flow:4,color:'#2A9D8F'},
+  {from:[17.69,83.22],to:[17.38,78.49],name:'Vizag-Secunderabad Product',type:'product',flow:4,color:'#2A9D8F'},
+  {from:[19.10,71.50],to:[22.47,70.06],name:'Mumbai High-Jamnagar',type:'domestic',flow:3,color:'#52BE80'},
+  {from:[27.20,71.50],to:[29.39,76.97],name:'Rajasthan-Panipat',type:'domestic',flow:2,color:'#52BE80'},
+];
+
+function getNodeStress(node){
+  if(offlineNodes.has(node.id)) return 100;
+  // Prefer the backend's own authoritative figure (pipeline.py twin_agent_node)
+  // over re-deriving one client-side — the two formulas used to disagree
+  // (backend: hormuz_score*0.4 + |run-rate change|; this used to compute a
+  // structurally different number from day_30 alone), which meant a refinery
+  // the backend correctly flagged as ~38% STRESSED showed as ~28%, under the
+  // 40% threshold, and so never appeared stressed anywhere on this page.
+  const real=(twinState?.stressed_refineries||[]).find(r=>r.name===node.name);
+  if(real) return real.stress;
+  if(!scenarioData) return 0;
+  const d30=scenarioData.day_30||{};
+  const scenario=scenarioData.scenario||'';
+  let stress=0;
+  if(scenario==='hormuz'&&node.crude_source&&node.crude_source.includes('Gulf')){
+    const pct=parseInt(node.crude_source.match(/\d+/)?.[0]||50)/100;
+    stress+=Math.abs(d30.refinery_run_rate_change_pct||0)*pct*3;
+    stress+=20;
+  }
+  if(scenario==='red_sea'&&['Paradip','Vizag','Chennai','Haldia'].some(r=>node.name?.includes(r))){
+    stress+=25;
+  }
+  if(scenario==='opec_policy'){
+    stress+=Math.abs(d30.refinery_run_rate_change_pct||0)*0.8;
+  }
+  return Math.min(Math.round(stress),100);
+}
+
+function stressColor(s){
+  if(s>=70) return '#C0392B';
+  if(s>=40) return '#D97706';
+  if(s>=10) return '#F0A94E';
+  return '#F0A94E';
+}
+
+function initMap(){
+  map=L.map('map',{center:[21,80],zoom:5,zoomControl:true,attributionControl:false});
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:18,opacity:0.5}).addTo(map);
+  fetch('/india_state.geojson').then(r=>r.json()).then(data=>{
+    L.geoJSON(data,{style:{fillColor:'transparent',color:'#B8C2CF',weight:1,opacity:0.7,fillOpacity:0}}).addTo(map);
+  }).catch(e=>console.log('GeoJSON:',e));
+  drawNetwork();
+  renderSidebar();
+  protectMapOverlays(['.map-controls','.layer-toggle','.map-legend','#op-panel','#op-open','.scenario-loading']);
+}
+
+// Floating panels sit as plain DOM children inside the Leaflet map container,
+// so a mousedown to drag/click one also bubbles up and starts Leaflet's own
+// map-drag/zoom — this stops that propagation so overlay UI never moves the map.
+function protectMapOverlays(selectors){
+  selectors.forEach(sel=>{
+    const el=document.querySelector(sel);
+    if(!el) return;
+    L.DomEvent.disableClickPropagation(el);
+    L.DomEvent.disableScrollPropagation(el);
+  });
+}
+
+function drawNetwork(){drawPipelines();drawRefineries();drawPorts();drawSPR();drawWellheads();drawDemandCenters();}
+
+function drawPipelines(){
+  pipelineLayers.forEach(l=>map.removeLayer(l));pipelineLayers=[];
+  if(!layers.pipelines) return;
+  PIPELINES.forEach(p=>{
+    const isScenario=currentMode==='scenario'&&scenarioData;
+    const hasOffline=offlineNodes.size>0;
+    let color=p.color,weight=Math.max(1,p.flow/4),opacity=0.8,dash=p.type==='domestic'?'5 4':null;
+    if(hasOffline){color='#3B5166';opacity=0.4;dash='4 4';}
+    if(isScenario&&p.type==='crude'){opacity=0.5;weight=Math.max(1,weight*0.6);}
+    const line=L.polyline([p.from,p.to],{color,weight,opacity,dashArray:dash}).addTo(map).bindTooltip(`${p.name}<br>Flow: ${p.flow} MMTPA`,{sticky:true});
+    pipelineLayers.push(line);
+  });
+}
+
+function drawRefineries(){
+  if(nodeMarkers.refineries) nodeMarkers.refineries.forEach(m=>map.removeLayer(m));
+  nodeMarkers.refineries=[];
+  if(!layers.refineries) return;
+  REFINERIES.forEach(r=>{
+    const stress=getNodeStress(r);
+    const isOffline=offlineNodes.has(r.id);
+    const color=isOffline?'#555':stress>=70?'#C0392B':stress>=40?'#D97706':stress>=10?'#E8A838':'#F0A94E';
+    const radius=Math.max(6,Math.min(16,r.mmtpa/5));
+    const pulseOpacity=stress>=40?0.5:0.35;
+    const m=L.circleMarker([r.lat,r.lng],{radius,fillColor:color,color:color,weight:isOffline?1:2,opacity:0.9,fillOpacity:pulseOpacity}).addTo(map);
+    m.on('click',()=>showNodePopup(r,stress));
+    nodeMarkers.refineries.push(m);
+    const label=L.marker([r.lat,r.lng],{icon:L.divIcon({className:'',
+      html:`<div style="color:${color};font-size:9px;font-family:'IBM Plex Mono';white-space:nowrap;text-shadow:0 0 3px #fff,0 0 3px #fff,0 1px 2px rgba(255,255,255,.9);margin-top:${radius+4}px;margin-left:-20px;">${r.name}${isOffline?' ✖':stress>=40?' ⚠':''}</div>`,
+      iconAnchor:[0,0]})}).addTo(map);
+    nodeMarkers.refineries.push(label);
+  });
+}
+
+function drawPorts(){
+  if(nodeMarkers.ports) nodeMarkers.ports.forEach(m=>map.removeLayer(m));
+  nodeMarkers.ports=[];
+  if(!layers.ports) return;
+  PORTS.forEach(p=>{
+    const m=L.circleMarker([p.lat,p.lng],{radius:8,fillColor:'#4DB6AC',color:'#2A9D8F',weight:2,opacity:0.9,fillOpacity:0.3}).addTo(map)
+      .bindPopup(`<div style="font-family:'IBM Plex Sans';color:#16202E;"><b>⚓ ${p.name}</b><br><span style="font-size:11px;color:#54627A">${p.state} · ${p.capacity_mmtpa} MMTPA</span></div>`);
+    nodeMarkers.ports.push(m);
+    nodeMarkers.ports.push(L.marker([p.lat,p.lng],{icon:L.divIcon({className:'',
+      html:`<div style="color:#4DB6AC;font-size:9px;font-family:'IBM Plex Mono';white-space:nowrap;text-shadow:0 0 3px #fff,0 0 3px #fff,0 1px 2px rgba(255,255,255,.9);margin-top:12px;margin-left:-15px;">${p.name}</div>`,
+      iconAnchor:[0,0]})}).addTo(map));
+  });
+}
+
+function drawSPR(){
+  if(nodeMarkers.spr) nodeMarkers.spr.forEach(m=>map.removeLayer(m));
+  nodeMarkers.spr=[];
+  if(!layers.spr) return;
+  const sprDraw=scenarioData?.day_30?.spr_drawdown_days||0;
+  SPR_LOCATIONS.forEach(s=>{
+    const remaining=Math.max(0,s.days-(sprDraw*(s.days/9.5)));
+    const pct=remaining/s.days*100;
+    const color=pct<30?'#C0392B':pct<60?'#D97706':'#7F77DD';
+    const m=L.circleMarker([s.lat,s.lng],{radius:8,fillColor:color,color:color,weight:2,opacity:0.9,fillOpacity:0.4}).addTo(map)
+      .bindPopup(`<div style="font-family:'IBM Plex Sans';color:#16202E;"><b>🛢 ${s.name}</b><br><span style="font-size:11px;color:#54627A">${s.capacity_mmt} MMT · ${remaining.toFixed(1)} days remaining</span></div>`);
+    nodeMarkers.spr.push(m);
+    nodeMarkers.spr.push(L.marker([s.lat,s.lng],{icon:L.divIcon({className:'',
+      html:`<div style="color:${color};font-size:9px;font-family:'IBM Plex Mono';white-space:nowrap;text-shadow:0 0 3px #fff,0 0 3px #fff,0 1px 2px rgba(255,255,255,.9);margin-top:12px;margin-left:-15px;">${s.name}</div>`,
+      iconAnchor:[0,0]})}).addTo(map));
+  });
+}
+
+function drawWellheads(){
+  if(nodeMarkers.wellheads) nodeMarkers.wellheads.forEach(m=>map.removeLayer(m));
+  nodeMarkers.wellheads=[];
+  if(!layers.wellheads) return;
+  WELLHEADS.forEach(w=>{
+    const m=L.circleMarker([w.lat,w.lng],{radius:6,fillColor:'#52BE80',color:'#27AE60',weight:1.5,opacity:0.9,fillOpacity:0.3}).addTo(map)
+      .bindPopup(`<div style="font-family:'IBM Plex Sans';color:#16202E;"><b>⛽ ${w.name}</b><br><span style="font-size:11px;color:#54627A">${w.company} · ${w.production_mbd} MBD</span></div>`);
+    nodeMarkers.wellheads.push(m);
+    nodeMarkers.wellheads.push(L.marker([w.lat,w.lng],{icon:L.divIcon({className:'',
+      html:`<div style="color:#52BE80;font-size:9px;font-family:'IBM Plex Mono';white-space:nowrap;text-shadow:0 0 3px #fff,0 0 3px #fff,0 1px 2px rgba(255,255,255,.9);margin-top:10px;margin-left:-15px;">${w.name}</div>`,
+      iconAnchor:[0,0]})}).addTo(map));
+  });
+}
+
+function drawDemandCenters(){
+  if(nodeMarkers.demand) nodeMarkers.demand.forEach(m=>map.removeLayer(m));
+  nodeMarkers.demand=[];
+  if(!layers.demand) return;
+  DEMAND_CENTERS.forEach(d=>{
+    const m=L.circleMarker([d.lat,d.lng],{radius:5,fillColor:'#E8DAEF',color:'#A569BD',weight:1.5,opacity:0.7,fillOpacity:0.25}).addTo(map)
+      .bindPopup(`<div style="font-family:'IBM Plex Sans';color:#16202E;"><b>🏙 ${d.name}</b><br><span style="font-size:11px;color:#54627A">${d.demand_mbd} MBD · ${d.pop_m}M population</span></div>`);
+    nodeMarkers.demand.push(m);
+    nodeMarkers.demand.push(L.marker([d.lat,d.lng],{icon:L.divIcon({className:'',
+      html:`<div style="color:#A569BD;font-size:9px;font-family:'IBM Plex Mono';white-space:nowrap;text-shadow:0 0 3px #fff,0 0 3px #fff,0 1px 2px rgba(255,255,255,.9);margin-top:8px;margin-left:-15px;">${d.name}</div>`,
+      iconAnchor:[0,0]})}).addTo(map));
+  });
+}
+
+function showNodePopup(node,stress){
+  const isOffline=offlineNodes.has(node.id);
+  const color=isOffline?'#666':stress>=70?'var(--red-soft)':stress>=40?'var(--amber-soft)':'var(--teal-soft)';
+  const status=isOffline?'OFFLINE':stress>=70?'CRITICAL':stress>=40?'STRESSED':'NORMAL';
+  const html=`<div style="font-family:'IBM Plex Sans';color:#16202E;min-width:220px;">
+    <div class="popup-title">🏭 ${node.name}</div>
+    <div class="popup-row"><span>Company</span><span>${node.company}</span></div>
+    <div class="popup-row"><span>Capacity</span><span>${node.mmtpa} MMTPA</span></div>
+    <div class="popup-row"><span>Crude source</span><span>${node.crude_source}</span></div>
+    <div class="popup-row"><span>State</span><span>${node.state}</span></div>
+    <div class="popup-row"><span>Stress</span><span style="color:${color};font-weight:700">${stress}/100 — ${status}</span></div>
+    ${currentMode==='whatif'?`
+      <button class="popup-btn ${isOffline?'popup-btn-online':''}" onclick="toggleNodeOffline('${node.id}')">
+        ${isOffline?'🟢 Bring Back Online':'🔴 Take Offline (What-If)'}
+      </button>`:''}
+  </div>`;
+  L.popup({maxWidth:280}).setLatLng([node.lat,node.lng]).setContent(html).openOn(map);
+}
+
+function toggleNodeOffline(nodeId){
+  if(offlineNodes.has(nodeId)) offlineNodes.delete(nodeId);
+  else offlineNodes.add(nodeId);
+  map.closePopup();
+  drawNetwork();
+  updateWhatIfPanel();
+  renderSidebar();
+  updateHeader();
+}
+
+function updateWhatIfPanel(){
+  if(offlineNodes.size===0){
+    document.getElementById('whatif-panel').innerHTML='<div class="whatif-title">Click any refinery on the map to simulate it going offline</div>';
+    return;
+  }
+  const offlineR=REFINERIES.filter(r=>offlineNodes.has(r.id));
+  const totalLost=offlineR.reduce((s,r)=>s+r.mmtpa,0);
+  const pctLost=(totalLost/250*100).toFixed(1);
+  const sprBridge=Math.min(9.5,(9.5*250/Math.max(totalLost,1))).toFixed(1);
+  document.getElementById('whatif-panel').innerHTML=`
+    <div class="whatif-title">⚠ ${offlineNodes.size} refinery(s) offline</div>
+    ${offlineR.map(r=>`<div class="whatif-item"><span style="color:var(--red-soft)">✖ ${r.name} (${r.company})</span><span class="whatif-val">${r.mmtpa} MMTPA</span></div>`).join('')}
+    <div style="border-top:1px solid var(--line);margin-top:8px;padding-top:8px;">
+      <div class="whatif-item"><span>Total capacity lost</span><span class="whatif-val" style="color:var(--red-soft)">${totalLost} MMTPA</span></div>
+      <div class="whatif-item"><span>% India refining offline</span><span class="whatif-val" style="color:var(--red-soft)">${pctLost}%</span></div>
+      <div class="whatif-item"><span>Supply gap</span><span class="whatif-val" style="color:var(--amber-soft)">${(totalLost*0.021).toFixed(2)} MBD</span></div>
+      <div class="whatif-item"><span>SPR bridge capacity</span><span class="whatif-val">${sprBridge} days</span></div>
+    </div>`;
+}
+
+// ── MODE CONTROLS ──
+function setMode(mode){
+  currentMode=mode;
+  ['normal','scenario','whatif'].forEach(m=>{
+    const btn=document.getElementById(`btn-${m}`);
+    if(btn) btn.classList.toggle('active',m===mode);
+  });
+  document.getElementById('whatif-section').style.display=mode==='whatif'?'block':'none';
+  document.getElementById('scenario-section').style.display=mode==='scenario'?'block':'none';
+  document.getElementById('whatif-overlay').classList.toggle('show',mode==='whatif');
+  if(mode==='whatif'){
+    setTimeout(()=>document.getElementById('whatif-overlay').classList.remove('show'),3000);
+  }
+  if(mode==='normal'){
+    scenarioData=null;offlineNodes.clear();
+    document.getElementById('alert-banner').className='alert-banner alert-LOW';
+    document.getElementById('alert-banner').innerHTML='<span>⬤</span><span>NETWORK: NORMAL OPERATING STATE</span>';
+  }
+  if(mode!=='whatif') offlineNodes.clear();
+  drawNetwork();
+  renderSidebar();
+  updateHeader();
+}
+
+async function applyScenario(){
+  currentMode='scenario';
+  ['normal','scenario','whatif'].forEach(m=>{
+    const btn=document.getElementById(`btn-${m}`);
+    if(btn) btn.classList.toggle('active',m==='scenario');
+  });
+  document.getElementById('scenario-loading').classList.add('show');
+  document.getElementById('whatif-section').style.display='none';
+  document.getElementById('whatif-overlay').classList.remove('show');
+
+  // Determine which scenario to fetch based on Page 1 risk
+  let scenarioKey='hormuz';
+  try{
+    const riskResp=await fetch(`${API}/api/risk`);
+    const riskData=await riskResp.json();
+    const corridors=riskData.corridors||{};
+    const scores={hormuz:corridors.hormuz?.risk_score||0,red_sea:corridors.red_sea?.risk_score||0,opec_policy:corridors.opec_policy?.risk_score||0};
+    scenarioKey=Object.entries(scores).sort((a,b)=>b[1]-a[1])[0][0];
+    document.getElementById('h-flow').textContent=`$${riskData.commodity_signals?.brent_price||'—'}`;
+  }catch(e){}
+
+  try{
+    const resp=await fetch(`${API}/api/scenario/${scenarioKey}`);
+    scenarioData=await resp.json();
+    // Fetch the backend's authoritative per-refinery stress BEFORE drawing —
+    // getNodeStress() reads twinState first, so it must be populated before
+    // drawNetwork/renderSidebar/updateHeader run, or they'd render against
+    // stale (null) data and fall back to the old, structurally different
+    // client-side approximation (see getNodeStress).
+    await refreshTwinState();
+    document.getElementById('scenario-loading').classList.remove('show');
+    document.getElementById('scenario-section').style.display='block';
+    renderScenarioImpact();
+    drawNetwork();
+    renderSidebar();
+    updateHeader();
+    syncOperatorKpi();
+    const names={hormuz:'HORMUZ CLOSURE',red_sea:'RED SEA SUSPENSION',opec_policy:'OPEC+ CUT'};
+    document.getElementById('alert-banner').className='alert-banner alert-SCENARIO';
+    document.getElementById('alert-banner').innerHTML=`<span>⬤</span><span>SCENARIO ACTIVE: ${names[scenarioKey]||scenarioKey} — Stress propagating through network</span>`;
+  }catch(e){
+    document.getElementById('scenario-loading').classList.remove('show');
+    document.getElementById('scenario-section').style.display='block';
+    document.getElementById('scenario-impact').innerHTML=`<div style="color:var(--red-soft);font-size:12px;">Error fetching scenario: ${e.message}</div>`;
+  }
+}
+
+// Populates the twinState global from the pipeline's own authoritative
+// computed state (real per-refinery stress %, network health) — the single
+// source of truth getNodeStress() and the Operator panel both read from now,
+// instead of two different formulas disagreeing with each other.
+async function refreshTwinState(){
+  try{
+    twinState = await (await fetch(`${API}/api/twin/state`)).json();
+  }catch(e){
+    twinState = null;
+  }
+  return twinState;
+}
+
+// The Operator panel's KPIs (updateOpKpi) previously only ever reflected a
+// one-time, no-stress baseline read at page load and never updated again —
+// so it kept showing NORMAL / 100% served / 0 at risk even after a real
+// scenario had been applied. served% is approximated from stressed capacity
+// against the network's total refining capacity (250 MMTPA, matching the
+// figure already shown elsewhere on this page) since twin_state doesn't
+// carry a direct served% field.
+async function syncOperatorKpi(){
+  const state = await refreshTwinState();
+  if(!state) return;
+  const stressedCapacity = state.total_stressed_capacity || 0;
+  const servedPct = Math.max(0, Math.round(100 - (stressedCapacity / 250) * 100));
+  updateOpKpi({
+    network_health: state.network_health,
+    served_pct: servedPct,
+    cities_at_risk: state.stressed_refineries || [],
+  });
+}
+
+// Auto-detect: if the live pipeline has already found an active, elevated
+// scenario (it auto-triggers the Scenario agent past a risk threshold — see
+// pipeline.py route_after_risk), reflect that on load instead of silently
+// defaulting to "Normal State" while the header/ticker already shows a
+// CRITICAL alert. Threshold matches Scenario Modeller's own auto-select
+// (Section: scenario.html loadRiskData, maxScore >= 50).
+async function autoDetectScenario(){
+  try{
+    const riskResp = await fetch(`${API}/api/risk`);
+    const riskData = await riskResp.json();
+    const corridors = riskData.corridors || {};
+    const maxScore = Math.max(0, ...Object.values(corridors).map(c => c.risk_score || 0));
+    const alert = riskData.alert_level;
+    if(alert === 'HIGH' || alert === 'CRITICAL' || maxScore >= 50){
+      await applyScenario();
+    } else {
+      syncOperatorKpi();
+    }
+  }catch(e){}
+}
+
+function renderScenarioImpact(){
+  if(!scenarioData) return;
+  const d30=scenarioData.day_30||{};
+  const names={hormuz:'Hormuz Closure',red_sea:'Red Sea Suspension',opec_policy:'OPEC+ Cut'};
+  const stressed=REFINERIES.filter(r=>getNodeStress(r)>=40);
+  document.getElementById('scenario-impact').innerHTML=`
+    <div class="scenario-impact-panel">
+      <div style="font-size:13px;font-weight:600;color:var(--red-soft);margin-bottom:10px;">
+        ⚡ ${scenarioData.scenario_name||names[scenarioData.scenario]||'Active Scenario'}
+      </div>
+      <div class="whatif-item"><span>Brent price impact</span><span class="whatif-val" style="color:var(--red-soft)">${d30.crude_price_change_pct>0?'+':''}${d30.crude_price_change_pct||'—'}%</span></div>
+      <div class="whatif-item"><span>Refinery run rate</span><span class="whatif-val" style="color:var(--red-soft)">${d30.refinery_run_rate_change_pct||'—'}%</span></div>
+      <div class="whatif-item"><span>Power stress</span><span class="whatif-val" style="color:var(--amber-soft)">${d30.power_sector_stress_index||'—'}/100</span></div>
+      <div class="whatif-item"><span>SPR drawdown</span><span class="whatif-val">${d30.spr_drawdown_days||'—'} days</span></div>
+      <div class="whatif-item"><span>GDP impact</span><span class="whatif-val" style="color:var(--red-soft)">${d30.gdp_impact_pct||'—'}%</span></div>
+      <div class="whatif-item"><span>Stressed refineries</span><span class="whatif-val" style="color:var(--amber-soft)">${stressed.length} of 18</span></div>
+      <div style="margin-top:10px;font-size:10px;color:var(--text-faint);">
+        Stress propagation from ${scenarioData.scenario_name} (Day 30 state). Gulf-dependent refineries show elevated stress.
+      </div>
+    </div>`;
+}
+
+function resetNetwork(){
+  scenarioData=null;offlineNodes.clear();
+  setMode('normal');
+}
+
+function toggleLayer(name){
+  layers[name]=!layers[name];
+  const el=document.getElementById(`lc-${name}`);
+  if(el){el.classList.toggle('on',layers[name]);el.textContent=layers[name]?'✓':'';}
+  drawNetwork();
+}
+
+function updateHeader(){
+  const stressed=REFINERIES.filter(r=>getNodeStress(r)>=40||offlineNodes.has(r.id));
+  document.getElementById('h-stressed').textContent=stressed.length;
+  document.getElementById('h-stressed').style.color=stressed.length>0?'var(--red-soft)':'var(--teal-soft)';
+  if(currentMode==='whatif'&&offlineNodes.size>0){
+    document.getElementById('alert-banner').className='alert-banner alert-WHATIF';
+    document.getElementById('alert-banner').innerHTML=`<span>⬤</span><span>WHAT-IF: ${offlineNodes.size} refinery(s) offline — ${REFINERIES.filter(r=>offlineNodes.has(r.id)).reduce((s,r)=>s+r.mmtpa,0)} MMTPA lost</span>`;
+  }
+}
+
+function renderSidebar(){renderRefineryList();renderSPRList();}
+
+function renderRefineryList(){
+  const el=document.getElementById('refinery-list');
+  if(!el) return;
+  const sorted=[...REFINERIES].sort((a,b)=>getNodeStress(b)-getNodeStress(a));
+  el.innerHTML=sorted.slice(0,10).map(r=>{
+    const stress=getNodeStress(r);
+    const isOffline=offlineNodes.has(r.id);
+    const color=isOffline?'#666':stress>=70?'var(--red-soft)':stress>=40?'var(--amber-soft)':'var(--teal-soft)';
+    const status=isOffline?'OFFLINE':stress>=70?'CRITICAL':stress>=40?'STRESSED':'NORMAL';
+    return `<div class="node-item" onclick="map.flyTo([${r.lat},${r.lng}],8,{duration:1})">
+      <div class="node-dot" style="background:${color};${stress>=40?`box-shadow:0 0 6px ${color}`:''};"></div>
+      <div class="node-info">
+        <div class="node-name">${r.name} <span style="font-size:9px;color:var(--text-faint)">${r.company}</span></div>
+        <div class="node-sub">${r.mmtpa} MMTPA · ${r.crude_source}</div>
+      </div>
+      <div class="node-stress" style="color:${color}">${status}</div>
+    </div>`;
+  }).join('');
+}
+
+function renderSPRList(){
+  const sprDraw=scenarioData?.day_30?.spr_drawdown_days||0;
+  const el=document.getElementById('spr-list');
+  if(!el) return;
+  el.innerHTML=SPR_LOCATIONS.map(s=>{
+    const drawn=sprDraw*(s.days/9.5);
+    const remaining=Math.max(0,s.days-drawn);
+    const pct=(remaining/s.days*100).toFixed(0);
+    const color=pct<30?'var(--red)':pct<60?'var(--amber)':'var(--purple)';
+    return `<div class="spr-item">
+      <div class="spr-name">${s.name} <span style="font-size:9px;color:var(--text-faint)">${s.state}</span></div>
+      <div class="spr-bar-track"><div class="spr-bar-fill" style="width:${pct}%;background:${color};"></div></div>
+      <div class="spr-nums"><span>${s.capacity_mmt} MMT</span><span style="color:${color}">${remaining.toFixed(1)} days</span></div>
+    </div>`;
+  }).join('');
+  document.getElementById('h-spr').textContent=`${Math.max(0,9.5-sprDraw).toFixed(1)} days`;
+}
+
+async function loadInitialState(){
+  try{
+    const resp=await fetch(`${API}/api/risk`);
+    const data=await resp.json();
+    document.getElementById('h-flow').textContent=`$${data.commodity_signals?.brent_price||'—'}`;
+  }catch(e){}
+}
+
+function updateTicker(){
+  const items=[
+    {t:'18 refineries · 8 ports · 3 SPR · 5 wellheads · 6 demand centers',c:'ok'},
+    {t:'Total refining: 250 MMTPA · Import dependency: 88%',c:''},
+    {t:'SPR cover: 9.5 days (Vizag 1.33 MMT + Mangalore 1.5 MMT + Padur 2.5 MMT)',c:''},
+    {t:'Click "Apply Scenario" to see stress propagation from live disruption',c:''},
+    {t:'Click "What-If" then click any refinery to simulate it going offline',c:''},
+    {t:'Data: PPAC · PNGRB · ISPRL · ONGC · Agent 1 · Agent 2',c:'ok'},
+  ];
+  document.getElementById('ticker-scroll').innerHTML=items.map(i=>`<span class="ticker-item ${i.c||''}">⬤ ${i.t}</span>`).join('');
+}
+
+// ══════════════════════════════════════════════
+// OPERATOR AGENT + LIVE VESSELS
+// ══════════════════════════════════════════════
+let opSession='twin_'+Date.now();
+let vesselLayer=null, vesselsOn=false, agentLayer=null;
+
+// Make a floating panel draggable by a handle (ignores clicks on buttons)
+function makeDraggable(panel,handle){
+  let drag=false,sx,sy,ox,oy;
+  handle.addEventListener('mousedown',e=>{
+    if(e.target.closest('button')) return;
+    drag=true;
+    const pr=panel.getBoundingClientRect(), par=panel.offsetParent.getBoundingClientRect();
+    ox=pr.left-par.left; oy=pr.top-par.top;
+    panel.style.left=ox+'px'; panel.style.top=oy+'px'; panel.style.right='auto'; panel.style.bottom='auto';
+    sx=e.clientX; sy=e.clientY; e.preventDefault();
+  });
+  document.addEventListener('mousemove',e=>{
+    if(!drag) return;
+    const par=panel.offsetParent.getBoundingClientRect();
+    let nx=ox+(e.clientX-sx), ny=oy+(e.clientY-sy);
+    nx=Math.max(0,Math.min(nx,par.width-60)); ny=Math.max(0,Math.min(ny,par.height-40));
+    panel.style.left=nx+'px'; panel.style.top=ny+'px';
+  });
+  document.addEventListener('mouseup',()=>drag=false);
+}
+
+function toggleOperator(show){
+  const p=document.getElementById('op-panel'), b=document.getElementById('op-open');
+  if(show){p.classList.remove('hidden');b.classList.add('hidden');}
+  else{p.classList.add('hidden');b.classList.remove('hidden');}
+}
+
+function findNodeById(id){
+  return REFINERIES.find(r=>r.id===id)||PORTS.find(p=>p.id===id)||SPR_LOCATIONS.find(s=>s.id===id)||
+         DEMAND_CENTERS.find(d=>d.id===id)||WELLHEADS.find(w=>w.id===id)||null;
+}
+
+async function toggleVessels(){
+  vesselsOn=!vesselsOn;
+  document.getElementById('btn-vessels')?.classList.toggle('active',vesselsOn);
+  if(!vesselLayer) vesselLayer=L.layerGroup().addTo(map);
+  vesselLayer.clearLayers();
+  const tagEl=document.getElementById('vessel-tag');
+  if(!vesselsOn){ if(tagEl) tagEl.textContent='Show inbound crude vessels'; return; }
+  if(tagEl) tagEl.textContent='Loading AIS…';
+  try{
+    const d=await (await fetch(API+'/api/twin/vessels')).json();
+    d.vessels.forEach(v=>{
+      L.marker([v.lat,v.lng],{interactive:true,icon:L.divIcon({className:'',iconSize:[8,8],iconAnchor:[4,4],
+        html:`<div style="width:8px;height:8px;border-radius:50%;background:#2F6FE0;border:1px solid #1F52AD;box-shadow:0 0 5px rgba(47,111,224,.6);"></div>`})})
+       .bindTooltip(`🛢 ${v.name}<br><span style="font-size:10px">${d.regions[v.region]||v.region} · ${v.sog!=null?v.sog+' kn':'—'}</span>`,{direction:'top'})
+       .addTo(vesselLayer);
+    });
+    if(tagEl) tagEl.textContent=(d.is_live?'● LIVE · ':'○ SIM · ')+d.count+' tankers';
+  }catch(e){ if(tagEl) tagEl.textContent='AIS unavailable'; }
+}
+
+function opAppend(role,html){
+  const log=document.getElementById('op-log');
+  const div=document.createElement('div');
+  div.className='op-msg '+role; div.innerHTML=html;
+  log.appendChild(div); log.scrollTop=log.scrollHeight;
+  return div;
+}
+
+async function opAsk(msg){
+  msg=(msg||'').trim(); if(!msg) return;
+  if(document.getElementById('op-panel').classList.contains('hidden')) toggleOperator(true);
+  opAppend('user',msg);
+  const typing=document.createElement('div');
+  typing.className='op-typing'; typing.textContent='Operator is simulating the network…';
+  const log=document.getElementById('op-log'); log.appendChild(typing); log.scrollTop=log.scrollHeight;
+  try{
+    const d=await (await fetch(API+'/api/twin/chat',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({message:msg,session_id:opSession,context:{offline:[...offlineNodes]}})})).json();
+    typing.remove(); handleOperator(d);
+  }catch(e){ typing.remove(); opAppend('agent','⚠ Could not reach the operator agent — is the backend running?'); }
+}
+
+function handleOperator(d){
+  if(d.error){ opAppend('agent','⚠ '+d.error); return; }
+  const a=d.assessment||{};
+  updateOpKpi(a);
+  let actHtml='';
+  (d.actions||[]).forEach(x=>{
+    if(x.type==='clear') return;
+    const tgt=x.targets?x.targets.map(t=>{const n=findNodeById(t);return n?n.name:t;}).join(', '):(x.value!=null?x.value+' days':'');
+    actHtml+=`<div class="a"><b>${(x.type||'').replace(/_/g,' ')}</b><span>${tgt}${x.rationale?' — '+x.rationale:''}</span></div>`;
+  });
+  const live=(d.agent_mode||'').includes('agentic');
+  const mode=live?'🟢 Live agent — ADK + simulation tools':'○ Deterministic operator — simulation-grounded';
+  opAppend('agent',`${d.narrative||''}${actHtml?`<div class="op-act">${actHtml}</div>`:''}<span class="mode">${mode}</span>`);
+  applyAgentActions(d.actions||[]);
+}
+
+function updateOpKpi(a){
+  const h=a.network_health||'—';
+  const hc=h==='CRITICAL'?'var(--red-soft)':h==='ELEVATED'?'var(--amber-soft)':h==='NORMAL'?'var(--teal-soft)':'var(--text)';
+  const he=document.getElementById('op-kpi-health'); he.textContent=h; he.style.color=hc;
+  document.getElementById('op-kpi-served').textContent=a.served_pct!=null?a.served_pct+'%':'—';
+  document.getElementById('op-kpi-risk').textContent=(a.cities_at_risk||[]).length;
+}
+
+function applyAgentActions(actions){
+  if(!agentLayer) agentLayer=L.layerGroup().addTo(map);
+  (actions||[]).forEach(x=>{
+    if(x.type==='set_offline'){ (x.targets||[]).forEach(id=>{ if(REFINERIES.find(r=>r.id===id)) offlineNodes.add(id); }); }
+    else if(x.type==='clear'){ offlineNodes.clear(); }
+  });
+  currentMode='scenario';
+  drawNetwork(); renderSidebar(); updateHeader();
+  // draw agent-focus rings on top of the redrawn network
+  agentLayer.clearLayers();
+  (actions||[]).filter(x=>x.type==='highlight').forEach(x=>{
+    (x.targets||[]).forEach(id=>{
+      const n=findNodeById(id);
+      if(n) L.circleMarker([n.lat,n.lng],{radius:15,color:'#7C3AED',weight:2.5,fill:false,opacity:.95}).addTo(agentLayer);
+    });
+  });
+  const off=[...offlineNodes];
+  document.getElementById('alert-banner').className='alert-banner alert-SCENARIO';
+  document.getElementById('alert-banner').innerHTML=`<span>⬤</span><span>OPERATOR AGENT ACTIVE${off.length?' — '+off.length+' refinery(s) offline':''}</span>`;
+}
+
+async function opInit(){
+  try{
+    const d=await (await fetch(API+'/api/twin/network')).json();
+    const s=d.simulation||{};
+    updateOpKpi({network_health:s.network_health,served_pct:s.served_pct,
+                 cities_at_risk:(s.demand_centres||[]).filter(c=>c.status!=='OK').map(c=>c.name)});
+  }catch(e){}
+}
+
+window.onload=()=>{
+  initMap();
+  loadInitialState();
+  updateTicker();
+  opInit();
+  makeDraggable(document.getElementById('op-panel'),document.getElementById('op-head'));
+  enhanceAllPanels();
+  setTimeout(()=>toggleOperator(true),700);
+  // If the pipeline already found an active, elevated scenario, show it by
+  // default instead of a misleading "Normal State" (see autoDetectScenario).
+  autoDetectScenario();
+  // Backend risk data now refreshes continuously in the background (main.py
+  // _background_refresh_loop) — keep the header price and KPI panel in step
+  // with it. Deliberately does NOT re-apply a scenario or touch What-If
+  // offline selections on this timer, so an in-progress manual simulation is
+  // never silently overwritten — only the KPI numbers stay current.
+  setInterval(()=>{ loadInitialState(); syncOperatorKpi(); }, 2*60*1000);
+};
+
+// ── Make floating panels draggable + collapsible ──
+function enhancePanel(el,title){
+  if(!el||el._enh) return; el._enh=true;
+  el.classList.add('mgr-panel');
+  const g=document.createElement('div'); g.className='panel-grip';
+  g.innerHTML=`<span class="pg-move">⠿</span><span class="pg-title">${title}</span><button class="pg-collapse" title="Hide/show">–</button>`;
+  el.insertBefore(g,el.firstChild);
+  makeDraggable(el,g);
+  g.querySelector('.pg-collapse').addEventListener('click',ev=>{
+    ev.stopPropagation();
+    const c=el.classList.toggle('panel-collapsed');
+    ev.target.textContent=c?'+':'–';
+  });
+}
+function enhanceAllPanels(){
+  enhancePanel(document.querySelector('.map-controls'),'Controls');
+  enhancePanel(document.querySelector('.layer-toggle'),'Map Layers');
+  enhancePanel(document.querySelector('.map-legend'),'Legend');
+}
+function toggleTwinSidebar(){
+  const sb=document.querySelector('.sidebar');
+  const collapsed=sb.classList.toggle('collapsed');
+  const btn=document.getElementById('sb-toggle');
+  if(btn) btn.textContent=collapsed?'◂ Show panel':'▸ Hide panel';
+  setTimeout(()=>map&&map.invalidateSize(),60);
+}
+</script>
+</body>
+</html>

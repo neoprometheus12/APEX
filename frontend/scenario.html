@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>APEX — Scenario Modeller</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+:root{
+  /* APEX light palette — shared with the Live Map (index.html) */
+  --bg:#F4F6F9;--panel:#FFFFFF;--panel2:#EEF1F6;--line:#DCE2EA;--line-soft:#E6EAF0;
+  --ink:#24272C;--ink-soft:#3D414A;
+  --accent:#C8791E;--accent-soft:#A6620F;--accent-dim:#E8A23D;--accent-tint:rgba(200,121,30,.10);
+  --critical:#C23B4B;--critical-soft:#9E2F3D;--critical-tint:rgba(194,59,75,.09);
+  --safe:#2F6FE0;--safe-soft:#1F52AD;--safe-tint:rgba(47,111,224,.09);
+  --reserve:#7C3AED;--reserve-soft:#6023C9;--reserve-tint:rgba(124,58,237,.09);
+  --text:#16202E;--text-dim:#54627A;--text-faint:#8993A6;
+  --shadow:0 2px 10px rgba(22,32,46,.06);--shadow-lg:0 12px 40px rgba(22,32,46,.14);
+  --radius:10px;
+  /* Back-compat aliases: this page's original names mapped onto the shared palette */
+  --amber:var(--accent);--amber-soft:var(--accent-soft);
+  --red:var(--critical);--red-soft:var(--critical-soft);
+  --teal:var(--safe);--teal-soft:var(--safe-soft);
+  --purple:var(--reserve);--green:#1E8449;--green-soft:#27AE60;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg);color:var(--text);font-family:'IBM Plex Sans',sans-serif;min-height:100vh;display:flex;flex-direction:column;}
+
+/* TICKER */
+.ticker{background:var(--panel2);border-bottom:1px solid var(--line);height:28px;overflow:hidden;display:flex;align-items:center;font-family:'IBM Plex Mono';font-size:10px;flex-shrink:0;}
+.ticker-label{background:var(--amber);color:#1A1206;padding:0 10px;height:100%;display:flex;align-items:center;font-weight:600;font-size:10px;letter-spacing:1px;white-space:nowrap;flex-shrink:0;}
+.ticker-content{flex:1;overflow:hidden;}
+.ticker-scroll{display:inline-block;white-space:nowrap;padding-left:100%;animation:ticker 60s linear infinite;}
+@keyframes ticker{from{transform:translateX(0);}to{transform:translateX(-100%);}}
+.ticker-item{margin-right:60px;color:var(--text-dim);}
+.ticker-item.high{color:var(--red-soft);}
+.ticker-item.med{color:var(--amber-soft);}
+
+/* HEADER */
+header{display:flex;justify-content:space-between;align-items:center;padding:0 24px;background:var(--panel);border-bottom:1px solid var(--line);height:56px;flex-shrink:0;}
+.brand{display:flex;align-items:center;gap:14px;}
+.brand-icon{width:32px;height:32px;border:2px solid var(--amber);border-radius:50%;display:flex;align-items:center;justify-content:center;}
+.brand-icon::after{content:'';width:8px;height:8px;border-radius:50%;background:var(--amber);box-shadow:0 0 10px var(--amber);}
+.brand h1{font-family:'Space Grotesk';font-size:20px;font-weight:700;letter-spacing:1px;}
+.brand p{font-size:10px;color:var(--text-faint);letter-spacing:2px;text-transform:uppercase;margin-top:1px;}
+.header-stats{display:flex;align-items:center;}
+.h-stat{text-align:center;padding:0 16px;border-left:1px solid var(--line);}
+.h-stat .hl{font-size:9px;color:var(--text-faint);text-transform:uppercase;letter-spacing:1px;}
+.h-stat .hv{font-family:'IBM Plex Mono';font-size:15px;font-weight:600;margin-top:2px;}
+.live-badge{display:flex;align-items:center;gap:6px;background:rgba(42,157,143,0.1);border:1px solid rgba(42,157,143,0.3);border-radius:20px;padding:4px 12px;font-size:11px;color:var(--teal-soft);margin-left:16px;}
+.live-dot{width:6px;height:6px;border-radius:50%;background:var(--teal);animation:blink 2s infinite;}
+@keyframes blink{0%{box-shadow:0 0 0 0 rgba(42,157,143,0.6);}70%{box-shadow:0 0 0 8px transparent;}100%{box-shadow:0 0 0 0 transparent;}}
+
+/* NAV */
+nav{display:flex;gap:4px;padding:8px 20px;background:var(--panel);border-bottom:1px solid var(--line);flex-shrink:0;}
+.nav-btn{padding:7px 18px;border-radius:7px;border:1px solid transparent;background:transparent;color:var(--text-dim);font-family:'IBM Plex Sans';font-size:12px;cursor:pointer;transition:all 0.2s;}
+.nav-btn:hover{background:var(--panel2);color:var(--text);border-color:var(--line);}
+.nav-btn.active{background:var(--ink);color:#fff;font-weight:600;}
+
+/* MAIN CONTENT */
+.content{flex:1;padding:24px;max-width:1400px;margin:0 auto;width:100%;}
+
+/* AUTO SELECT BANNER */
+.auto-banner{
+  background:rgba(217,119,6,0.08);border:1px solid rgba(217,119,6,0.25);
+  border-radius:10px;padding:12px 20px;margin-bottom:20px;
+  display:flex;align-items:center;gap:12px;font-size:12px;color:var(--amber-soft);
+}
+.auto-banner .ab-icon{font-size:16px;}
+.auto-banner strong{color:var(--amber);}
+
+/* SCENARIO CARDS */
+.scenario-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:24px;}
+.scenario-card{
+  background:var(--panel);border:1px solid var(--line);border-radius:12px;
+  padding:20px;cursor:pointer;transition:all 0.2s;position:relative;overflow:hidden;
+}
+.scenario-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;}
+.scenario-card.hormuz::before{background:var(--red);}
+.scenario-card.red-sea::before{background:var(--amber);}
+.scenario-card.opec::before{background:var(--purple);}
+.scenario-card:hover{transform:translateY(-2px);border-color:var(--amber);}
+.scenario-card.active{border-color:var(--amber);background:var(--panel2);}
+.sc-icon{font-size:28px;margin-bottom:10px;}
+.sc-name{font-family:'Space Grotesk';font-size:15px;font-weight:600;margin-bottom:4px;}
+.sc-desc{font-size:11px;color:var(--text-faint);line-height:1.5;margin-bottom:12px;}
+.sc-risk{
+  display:inline-flex;align-items:center;gap:6px;
+  font-family:'IBM Plex Mono';font-size:11px;padding:3px 10px;
+  border-radius:4px;
+}
+.sc-risk.high{background:rgba(192,57,43,0.15);color:var(--red-soft);}
+.sc-risk.med{background:rgba(217,119,6,0.15);color:var(--amber-soft);}
+.sc-risk.low{background:rgba(42,157,143,0.15);color:var(--teal-soft);}
+.sc-loading{font-size:11px;color:var(--text-faint);margin-top:8px;font-style:italic;}
+
+/* LOADING STATE */
+.loading-state{
+  text-align:center;padding:60px;color:var(--text-faint);
+  font-size:13px;font-style:italic;
+}
+.loading-spinner{
+  width:32px;height:32px;border:3px solid var(--line);
+  border-top-color:var(--amber);border-radius:50%;
+  animation:spin 1s linear infinite;margin:0 auto 16px;
+}
+@keyframes spin{to{transform:rotate(360deg);}}
+
+/* KPI STRIP */
+.kpi-strip{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:24px;}
+.kpi-card{
+  background:var(--panel);border:1px solid var(--line);border-radius:10px;
+  padding:16px;text-align:center;transition:all 0.3s;
+}
+.kpi-card.highlight{border-color:var(--amber);background:rgba(217,119,6,0.05);}
+.kpi-label{font-size:9px;text-transform:uppercase;letter-spacing:1px;color:var(--text-faint);margin-bottom:8px;}
+.kpi-value{font-family:'IBM Plex Mono';font-size:24px;font-weight:700;margin-bottom:4px;transition:color 0.3s;}
+.kpi-value.pos{color:var(--red-soft);}
+.kpi-value.neg{color:var(--teal-soft);}
+.kpi-sub{font-size:10px;color:var(--text-dim);}
+
+/* MAIN GRID */
+.main-grid{display:grid;grid-template-columns:1fr 400px;gap:20px;margin-bottom:20px;}
+
+/* CHART */
+.chart-panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:20px;}
+.chart-title{font-size:11px;text-transform:uppercase;letter-spacing:1.5px;color:var(--text-faint);margin-bottom:4px;}
+.chart-subtitle{font-size:12px;color:var(--text-dim);margin-bottom:16px;}
+.chart-wrap{position:relative;height:280px;}
+
+/* CASCADE TIMELINE */
+.cascade-panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:20px;}
+.cascade-title{font-size:11px;text-transform:uppercase;letter-spacing:1.5px;color:var(--text-faint);margin-bottom:16px;}
+.cascade-stage{
+  background:var(--bg);border:1px solid var(--line);border-radius:8px;
+  padding:14px;margin-bottom:10px;
+  opacity:0;transform:translateY(8px);
+  transition:opacity 0.5s ease,transform 0.5s ease;
+}
+.cascade-stage:last-child{margin-bottom:0;}
+.cascade-stage.visible{opacity:1;transform:translateY(0);}
+.cascade-day{
+  font-family:'IBM Plex Mono';font-size:10px;color:var(--amber-soft);
+  text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;
+  display:flex;align-items:center;gap:6px;
+}
+.cascade-day::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--amber-soft);}
+.cascade-metric{display:flex;justify-content:space-between;font-size:11px;padding:4px 0;border-bottom:1px solid var(--line);}
+.cascade-metric:last-of-type{border-bottom:none;}
+.cascade-metric .m-label{color:var(--text-dim);}
+.cascade-metric .m-val{font-family:'IBM Plex Mono';font-weight:600;}
+.cascade-metric .m-val.up{color:var(--red-soft);}
+.cascade-metric .m-val.down{color:var(--teal-soft);}
+.cascade-narrative{font-size:11px;color:var(--text-dim);margin-top:8px;padding-top:8px;border-top:1px solid var(--line);line-height:1.5;font-style:italic;}
+
+/* BOTTOM GRID */
+.bottom-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:20px;}
+.b-panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;}
+.b-title{font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--text-faint);margin-bottom:12px;}
+
+/* SECTOR CASCADE */
+.sector-item{display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);font-size:11px;}
+.sector-item:last-child{border-bottom:none;}
+.sector-icon{font-size:16px;flex-shrink:0;}
+.sector-name{color:var(--text-dim);font-size:10px;margin-bottom:2px;}
+.sector-impact{color:var(--text);font-weight:500;}
+
+/* SPR STATUS */
+.spr-bar-wrap{margin-bottom:12px;}
+.spr-label{display:flex;justify-content:space-between;font-size:10px;color:var(--text-faint);margin-bottom:4px;}
+.spr-track{height:8px;background:var(--line);border-radius:4px;overflow:hidden;}
+.spr-fill{height:100%;border-radius:4px;transition:width 1s ease;}
+.spr-stat{display:flex;justify-content:space-between;font-size:11px;padding:6px 0;border-bottom:1px solid var(--line);}
+.spr-stat:last-child{border-bottom:none;}
+.spr-stat .s-label{color:var(--text-dim);}
+.spr-stat .s-val{font-family:'IBM Plex Mono';font-weight:600;}
+
+/* VALIDATION */
+.val-item{padding:8px 0;border-bottom:1px solid var(--line);font-size:11px;}
+.val-item:last-child{border-bottom:none;}
+.val-event{color:var(--text);font-weight:500;margin-bottom:4px;}
+.val-numbers{display:flex;gap:12px;font-family:'IBM Plex Mono';font-size:10px;}
+.val-accuracy{font-size:10px;margin-top:3px;}
+.val-bar{height:3px;background:var(--line);border-radius:2px;margin-top:4px;overflow:hidden;}
+.val-bar-fill{height:100%;border-radius:2px;transition:width 0.8s ease;}
+
+/* EXECUTIVE SUMMARY */
+.exec-summary{
+  background:rgba(42,157,143,0.05);border:1px solid rgba(42,157,143,0.2);
+  border-radius:10px;padding:16px;margin-bottom:20px;
+  font-size:13px;color:var(--text);line-height:1.7;
+}
+.exec-summary .es-label{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--teal-soft);margin-bottom:8px;}
+
+/* RESET */
+.reset-btn{
+  background:transparent;border:1px solid var(--line);color:var(--text-dim);
+  padding:6px 14px;border-radius:6px;font-size:11px;cursor:pointer;
+  font-family:'IBM Plex Sans';transition:all 0.15s;margin-left:auto;display:block;
+}
+.reset-btn:hover{border-color:var(--red-soft);color:var(--red-soft);}
+
+::-webkit-scrollbar{width:4px;}
+::-webkit-scrollbar-thumb{background:var(--line);border-radius:2px;}
+</style>
+</head>
+<body>
+
+<div class="ticker">
+  <div class="ticker-label">⚡ SCENARIO MODELLER</div>
+  <div class="ticker-content">
+    <div class="ticker-scroll" id="ticker-scroll">
+      <span class="ticker-item">Select a scenario to model its cascading impact on India's energy system</span>
+    </div>
+  </div>
+</div>
+
+<header>
+  <div class="brand">
+    <div class="brand-icon"></div>
+    <div><h1>APEX</h1><p>Disruption Scenario Modeller — Page 2</p></div>
+  </div>
+  <div class="header-stats">
+    <div class="h-stat"><div class="hl">Brent Crude</div><div class="hv" id="h-brent" style="color:var(--amber-soft)">—</div></div>
+    <div class="h-stat"><div class="hl">Alert Level</div><div class="hv" id="h-alert">—</div></div>
+    <div class="h-stat"><div class="hl">Model Type</div><div class="hv" style="font-size:11px;color:var(--teal-soft)">ML + Econometric</div></div>
+    <div class="h-stat"><div class="hl">Training Events</div><div class="hv" style="color:var(--purple)">16</div></div>
+    <div class="live-badge"><div class="live-dot"></div>LIVE MODEL</div>
+  </div>
+</header>
+
+<nav>
+  <button class="nav-btn" onclick="location.href='index.html'">🗺 Live Map</button>
+  <button class="nav-btn active">⚡ Scenario Modeller</button>
+  <button class="nav-btn" onclick="location.href='twin.html'">🔗 Digital Twin</button>
+  <button class="nav-btn" onclick="location.href='business.html'">💼 Business Impact</button>
+</nav>
+
+<div class="content">
+
+  <!-- AUTO SELECT BANNER -->
+  <div class="auto-banner" id="auto-banner">
+    <span class="ab-icon">🤖</span>
+    <span>Loading live risk data from Agent 1...</span>
+  </div>
+
+  <!-- SCENARIO CARDS -->
+  <div class="scenario-cards">
+    <div class="scenario-card hormuz" id="card-hormuz" onclick="runScenario('hormuz')">
+      <div class="sc-icon">🛢</div>
+      <div class="sc-name">Strait of Hormuz Closure</div>
+      <div class="sc-desc">50% flow disruption for 30 days. 40-45% of India's crude transits here.</div>
+      <span class="sc-risk high" id="risk-hormuz">Loading...</span>
+    </div>
+    <div class="scenario-card red-sea" id="card-redsea" onclick="runScenario('red_sea')">
+      <div class="sc-icon">⚓</div>
+      <div class="sc-name">Red Sea Full Suspension</div>
+      <div class="sc-desc">All traffic rerouted via Cape of Good Hope. Adds 12-14 days transit.</div>
+      <span class="sc-risk med" id="risk-redsea">Loading...</span>
+    </div>
+    <div class="scenario-card opec" id="card-opec" onclick="runScenario('opec_policy')">
+      <div class="sc-icon">📉</div>
+      <div class="sc-name">OPEC+ Emergency Cut</div>
+      <div class="sc-desc">2 million barrels/day coordinated cut, immediate effect on global supply.</div>
+      <span class="sc-risk low" id="risk-opec">Loading...</span>
+    </div>
+  </div>
+
+  <!-- OUTPUT AREA -->
+  <div id="output-area">
+    <div class="loading-state">
+      <div>Select a scenario above to run the ML + Econometric cascade model</div>
+      <div style="margin-top:8px;font-size:11px;">Model trained on 16 historical disruption events · Validated against Abqaiq (81.4% accuracy)</div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const API = 'http://localhost:8000';
+let riskData = null;
+let activeScenario = null;
+let chart = null;
+
+async function loadRiskData(){
+  try{
+    const resp = await fetch(`${API}/api/risk`);
+    riskData = await resp.json();
+    const corridors = riskData.corridors || {};
+    document.getElementById('h-brent').textContent = `$${riskData.commodity_signals?.brent_price||'—'}`;
+    const alert = riskData.alert_level || 'LOW';
+    const ae = document.getElementById('h-alert');
+    ae.textContent = alert;
+    ae.style.color = alert==='CRITICAL'||alert==='HIGH'?'var(--red-soft)':alert==='MEDIUM'?'var(--amber-soft)':'var(--teal-soft)';
+
+    const hs = corridors.hormuz?.risk_score||0;
+    const rs = corridors.red_sea?.risk_score||0;
+    const os = corridors.opec_policy?.risk_score||0;
+
+    document.getElementById('risk-hormuz').textContent = `Risk: ${hs}/100`;
+    document.getElementById('risk-hormuz').className = `sc-risk ${hs>=70?'high':hs>=40?'med':'low'}`;
+    document.getElementById('risk-redsea').textContent = `Risk: ${rs}/100`;
+    document.getElementById('risk-redsea').className = `sc-risk ${rs>=70?'high':rs>=40?'med':'low'}`;
+    document.getElementById('risk-opec').textContent = `Risk: ${os}/100`;
+    document.getElementById('risk-opec').className = `sc-risk ${os>=70?'high':os>=40?'med':'low'}`;
+
+    const maxKey = Object.entries(corridors).sort((a,b)=>b[1].risk_score-a[1].risk_score)[0]?.[0];
+    const maxScore = corridors[maxKey]?.risk_score||0;
+    const names = {hormuz:'Strait of Hormuz',red_sea:'Red Sea',opec_policy:'OPEC+ Policy'};
+    document.getElementById('auto-banner').innerHTML = `
+      <span class="ab-icon">🤖</span>
+      <span>Agent 1 detected <strong>${names[maxKey]||maxKey}</strong> as highest risk corridor (${maxScore}/100) — scenario pre-selected. Click to run model.</span>
+    `;
+
+    updateTicker(riskData);
+
+    if(maxScore >= 50 && maxKey){
+      ['hormuz','redsea','opec'].forEach(k => document.getElementById(`card-${k}`)?.classList.remove('active'));
+      const cardMap = {hormuz:'hormuz',red_sea:'redsea',opec_policy:'opec'};
+      document.getElementById(`card-${cardMap[maxKey]}`)?.classList.add('active');
+    }
+  }catch(e){
+    document.getElementById('auto-banner').innerHTML = `<span class="ab-icon">⚠</span><span>Cannot reach backend — is uvicorn running?</span>`;
+  }
+}
+
+function updateTicker(d){
+  const cor = d.corridors||{};
+  const items = [
+    `HORMUZ: ${cor.hormuz?.risk_score||'—'}/100`,
+    `RED SEA: ${cor.red_sea?.risk_score||'—'}/100`,
+    `OPEC+: ${cor.opec_policy?.risk_score||'—'}/100`,
+    `BRENT: $${d.commodity_signals?.brent_price||'—'}/barrel`,
+    `ALERT: ${d.alert_level||'—'} — Disruption prob. ${d.overall_disruption_probability||'—'}%`,
+    `MODEL: ML (Gradient Boosting) + IMF/RBI/World Bank Econometric Coefficients`,
+    `VALIDATION: Abqaiq 2019 — 81.4% accuracy`,
+  ];
+  document.getElementById('ticker-scroll').innerHTML = items.map(t=>`<span class="ticker-item">⬤ ${t}</span>`).join('');
+}
+
+async function runScenario(key){
+  activeScenario = key;
+  ['hormuz','redsea','opec'].forEach(k => document.getElementById(`card-${k}`)?.classList.remove('active'));
+  const cardMap = {hormuz:'hormuz',red_sea:'redsea',opec_policy:'opec'};
+  document.getElementById(`card-${cardMap[key]}`)?.classList.add('active');
+
+  document.getElementById('output-area').innerHTML = `
+    <div class="loading-state">
+      <div class="loading-spinner"></div>
+      <div>Running ML + Econometric cascade model...</div>
+      <div style="margin-top:8px;font-size:11px;color:var(--text-faint);">Gradient Boosting prediction → Econometric layer → Gemini narrative</div>
+    </div>
+  `;
+
+  try{
+    const resp = await fetch(`${API}/api/scenario/${key}`);
+    const data = await resp.json();
+    renderScenario(data);
+  }catch(e){
+    document.getElementById('output-area').innerHTML = `<div class="loading-state" style="color:var(--red-soft);">Error: ${e.message}</div>`;
+  }
+}
+
+function fmt(v, suffix='%', showPlus=true){
+  if(v===undefined||v===null) return '—';
+  const n = parseFloat(v);
+  const sign = showPlus && n > 0 ? '+' : '';
+  return `${sign}${n.toFixed(2)}${suffix}`;
+}
+
+function renderScenario(d){
+  const d30 = d.day_30 || {};
+  const d7  = d.day_7  || {};
+  const d1  = d.day_1  || {};
+
+  // Build full HTML
+  document.getElementById('output-area').innerHTML = `
+
+    <!-- EXECUTIVE SUMMARY -->
+    <div class="exec-summary">
+      <div class="es-label">⚡ Executive Summary — Agent 2 (ML + Econometric Model)</div>
+      ${d.executive_summary || '—'}
+    </div>
+
+    <!-- KPI STRIP -->
+    <div class="kpi-strip" id="kpi-strip">
+      <div class="kpi-card highlight">
+        <div class="kpi-label">Brent Price (Day 7)</div>
+        <div class="kpi-value pos" id="kv-brent">${fmt(d7.crude_price_change_pct)}</div>
+        <div class="kpi-sub">$${d7.brent_price_usd||'—'}/barrel</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Refinery Run Rate (Day 30)</div>
+        <div class="kpi-value pos" id="kv-refinery">${fmt(d30.refinery_run_rate_change_pct)}</div>
+        <div class="kpi-sub">Aggregate coastal refineries</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Power Stress (Day 30)</div>
+        <div class="kpi-value" id="kv-power" style="color:${(d30.power_sector_stress_index||0)>=50?'var(--red-soft)':'var(--amber-soft)'}">${d30.power_sector_stress_index||'—'}<span style="font-size:14px">/100</span></div>
+        <div class="kpi-sub">Fuel-linked generation index</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">GDP Impact (Day 30)</div>
+        <div class="kpi-value pos" id="kv-gdp">${fmt(d30.gdp_impact_pct)}</div>
+        <div class="kpi-sub">IMF + ML combined estimate</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">India Import Bill</div>
+        <div class="kpi-value pos">+$${d.india_import_bill_30d_bn||'—'}B</div>
+        <div class="kpi-sub">30-day additional cost</div>
+      </div>
+    </div>
+
+    <!-- MAIN GRID: Chart + Cascade -->
+    <div class="main-grid">
+
+      <!-- BRENT PRICE CHART -->
+      <div class="chart-panel">
+        <div class="chart-title">Brent Crude Price Trajectory</div>
+        <div class="chart-subtitle">${d.scenario_name} — ML model prediction Day 0 to Day 90</div>
+        <div class="chart-wrap">
+          <canvas id="price-chart"></canvas>
+        </div>
+        <div style="margin-top:10px;font-size:10px;color:var(--text-faint);">
+          Model confidence: <span style="color:var(--teal-soft);font-family:'IBM Plex Mono'">${d.model_confidence}%</span>
+          &nbsp;·&nbsp; Sources: ${(d.econometric_sources||[]).join(', ')}
+        </div>
+      </div>
+
+      <!-- CASCADE TIMELINE -->
+      <div class="cascade-panel">
+        <div class="cascade-title">Cascade Timeline</div>
+        <div class="cascade-stage" id="stage-d1">
+          <div class="cascade-day">Day 1 — Immediate Impact</div>
+          <div class="cascade-metric"><span class="m-label">Brent price</span><span class="m-val up">${fmt(d1.crude_price_change_pct)}</span></div>
+          <div class="cascade-metric"><span class="m-label">Petrol price</span><span class="m-val up">${fmt(d1.petrol_price_change_pct)}</span></div>
+          <div class="cascade-metric"><span class="m-label">Diesel price</span><span class="m-val up">${fmt(d1.diesel_price_change_pct)}</span></div>
+          <div class="cascade-metric"><span class="m-label">Power stress</span><span class="m-val">${d1.power_sector_stress_index||'—'}/100</span></div>
+          <div class="cascade-metric"><span class="m-label">SPR drawdown</span><span class="m-val">${d1.spr_drawdown_days||'—'} days</span></div>
+          <div class="cascade-narrative">${d1.narrative||''}</div>
+        </div>
+        <div class="cascade-stage" id="stage-d7">
+          <div class="cascade-day">Day 7 — Supply Tightening</div>
+          <div class="cascade-metric"><span class="m-label">Brent price</span><span class="m-val up">${fmt(d7.crude_price_change_pct)}</span></div>
+          <div class="cascade-metric"><span class="m-label">Refinery rate</span><span class="m-val up">${fmt(d7.refinery_run_rate_change_pct)}</span></div>
+          <div class="cascade-metric"><span class="m-label">Petrol price</span><span class="m-val up">${fmt(d7.petrol_price_change_pct)}</span></div>
+          <div class="cascade-metric"><span class="m-label">Power stress</span><span class="m-val">${d7.power_sector_stress_index||'—'}/100</span></div>
+          <div class="cascade-metric"><span class="m-label">GDP impact</span><span class="m-val up">${fmt(d7.gdp_impact_pct)}</span></div>
+          <div class="cascade-narrative">${d7.narrative||''}</div>
+        </div>
+        <div class="cascade-stage" id="stage-d30">
+          <div class="cascade-day">Day 30 — Full Cascade</div>
+          <div class="cascade-metric"><span class="m-label">Brent price</span><span class="m-val up">${fmt(d30.crude_price_change_pct)}</span></div>
+          <div class="cascade-metric"><span class="m-label">Refinery rate</span><span class="m-val up">${fmt(d30.refinery_run_rate_change_pct)}</span></div>
+          <div class="cascade-metric"><span class="m-label">GDP impact</span><span class="m-val up">${fmt(d30.gdp_impact_pct)}</span></div>
+          <div class="cascade-metric"><span class="m-label">CPI impact</span><span class="m-val up">${fmt(d30.cpi_impact_pct)}</span></div>
+          <div class="cascade-metric"><span class="m-label">SPR drawdown</span><span class="m-val">${d30.spr_drawdown_days||'—'} days</span></div>
+          <div class="cascade-narrative">${d30.narrative||''}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- BOTTOM GRID -->
+    <div class="bottom-grid">
+
+      <!-- SECTOR CASCADE -->
+      <div class="b-panel">
+        <div class="b-title">Sector Cascade Impact</div>
+        <div class="sector-item">
+          <span class="sector-icon">✈</span>
+          <div><div class="sector-name">Aviation</div><div class="sector-impact">${d.cascade_to_sectors?.aviation||'—'}</div></div>
+        </div>
+        <div class="sector-item">
+          <span class="sector-icon">🚛</span>
+          <div><div class="sector-name">Transport & Logistics</div><div class="sector-impact">${d.cascade_to_sectors?.transport||'—'}</div></div>
+        </div>
+        <div class="sector-item">
+          <span class="sector-icon">⚡</span>
+          <div><div class="sector-name">Power Sector</div><div class="sector-impact">${d.cascade_to_sectors?.power||'—'}</div></div>
+        </div>
+        <div class="sector-item">
+          <span class="sector-icon">🌾</span>
+          <div><div class="sector-name">Fertiliser & Agriculture</div><div class="sector-impact">${d.cascade_to_sectors?.fertiliser||'—'}</div></div>
+        </div>
+      </div>
+
+      <!-- SPR STATUS -->
+      <div class="b-panel">
+        <div class="b-title">Strategic Petroleum Reserve</div>
+        <div class="spr-bar-wrap">
+          <div class="spr-label"><span>SPR Cover Remaining</span><span style="font-family:'IBM Plex Mono'">${Math.max(0, 9.5 - (d30.spr_drawdown_days||0)).toFixed(1)} days</span></div>
+          <div class="spr-track">
+            <div class="spr-fill" style="width:${Math.max(0,(9.5-(d30.spr_drawdown_days||0))/9.5*100).toFixed(0)}%;background:${(d30.spr_drawdown_days||0)>6?'var(--red)':'var(--amber)'};"></div>
+          </div>
+        </div>
+        <div class="spr-stat"><span class="s-label">Total SPR cover</span><span class="s-val">9.5 days</span></div>
+        <div class="spr-stat"><span class="s-label">30-day drawdown</span><span class="s-val" style="color:var(--red-soft)">${d30.spr_drawdown_days||'—'} days</span></div>
+        <div class="spr-stat"><span class="s-label">Projected exhaustion</span><span class="s-val" style="color:var(--amber-soft)">Day ${d.spr_exhaustion_day||'—'}</span></div>
+        <div class="spr-stat"><span class="s-label">Intervention trigger</span><span class="s-val" style="font-size:10px">${d.intervention_trigger||'—'}</span></div>
+        <div style="margin-top:10px;font-size:10px;color:var(--text-faint);line-height:1.5;">
+          SPR locations: Visakhapatnam (1.33 MMT) · Mangalore (1.5 MMT) · Padur (2.5 MMT)
+        </div>
+      </div>
+
+      <!-- HISTORICAL VALIDATION -->
+      <div class="b-panel">
+        <div class="b-title">Model Validation — Real Events</div>
+        ${(d.historical_validation||[]).map(v=>`
+          <div class="val-item">
+            <div class="val-event">${v.event}</div>
+            <div class="val-numbers">
+              <span style="color:var(--teal-soft)">Predicted: ${v.predicted_d7>0?'+':''}${v.predicted_d7}%</span>
+              <span style="color:var(--text-dim)">Actual: ${v.actual_d7>0?'+':''}${v.actual_d7}%</span>
+            </div>
+            <div class="val-accuracy" style="color:${v.accuracy>=70?'var(--teal-soft)':'var(--amber-soft)'}">
+              Accuracy: ${v.accuracy}% ${v.accuracy>=70?'✅':'⚠'}
+            </div>
+            <div class="val-bar">
+              <div class="val-bar-fill" style="width:${v.accuracy}%;background:${v.accuracy>=70?'var(--teal)':'var(--amber)'}"></div>
+            </div>
+          </div>
+        `).join('')}
+        <div style="margin-top:12px;font-size:10px;color:var(--text-faint);line-height:1.5;">
+          Trained on 16 historical disruption events 1990–2025.<br>
+          ML model: Gradient Boosting · Combined with IMF/RBI/World Bank econometric coefficients.
+        </div>
+      </div>
+    </div>
+
+    <!-- STRESSED REFINERIES -->
+    <div style="background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:20px;">
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--text-faint);margin-bottom:12px;">Most Stressed Refineries</div>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;">
+        ${(d.most_stressed_refineries||[]).map((r,i)=>`
+          <div style="background:var(--bg);border:1px solid ${i===0?'var(--red)':i===1?'var(--amber)':'var(--line)'};border-radius:8px;padding:10px 16px;font-size:12px;">
+            <span style="font-family:'IBM Plex Mono';font-size:16px;font-weight:700;color:${i===0?'var(--red-soft)':i===1?'var(--amber-soft)':'var(--text-dim)'};margin-right:8px;">${i+1}</span>
+            ${r}
+          </div>
+        `).join('')}
+      </div>
+    </div>
+
+    <button class="reset-btn" onclick="resetScenario()">↺ Reset to baseline</button>
+  `;
+
+  // Animate cascade stages
+  setTimeout(()=>document.getElementById('stage-d1')?.classList.add('visible'), 100);
+  setTimeout(()=>document.getElementById('stage-d7')?.classList.add('visible'), 400);
+  setTimeout(()=>document.getElementById('stage-d30')?.classList.add('visible'), 700);
+
+  // Draw chart
+  setTimeout(()=>drawChart(d.time_series||[], d.baseline_brent||69.56), 200);
+}
+
+function drawChart(timeSeries, baseline){
+  const ctx = document.getElementById('price-chart');
+  if(!ctx) return;
+  if(chart) chart.destroy();
+
+  const labels = timeSeries.map(t => `Day ${t.day}`);
+  const prices = timeSeries.map(t => t.brent_price);
+  const baselineData = timeSeries.map(() => baseline);
+
+  chart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Brent Price (Scenario)',
+          data: prices,
+          borderColor: '#D97706',
+          backgroundColor: 'rgba(217,119,6,0.08)',
+          borderWidth: 2.5,
+          pointBackgroundColor: '#D97706',
+          pointRadius: 4,
+          tension: 0.4,
+          fill: true,
+        },
+        {
+          label: `Baseline ($${baseline}/bbl)`,
+          data: baselineData,
+          borderColor: '#3B5166',
+          borderWidth: 1.5,
+          borderDash: [6,4],
+          pointRadius: 0,
+          fill: false,
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: {duration: 800, easing: 'easeInOutQuart'},
+      plugins: {
+        legend: {
+          labels: {color:'#54627A', font:{family:'IBM Plex Sans',size:11}}
+        },
+        tooltip: {
+          backgroundColor:'#FFFFFF',
+          borderColor:'#DCE2EA',
+          borderWidth:1,
+          titleColor:'#16202E',
+          bodyColor:'#54627A',
+          callbacks: {
+            label: ctx => ` $${ctx.parsed.y.toFixed(2)}/barrel`
+          }
+        }
+      },
+      scales: {
+        x: {
+          grid:{color:'#E6EAF0'},
+          ticks:{color:'#54627A',font:{family:'IBM Plex Mono',size:10}}
+        },
+        y: {
+          grid:{color:'#E6EAF0'},
+          ticks:{color:'#54627A',font:{family:'IBM Plex Mono',size:10},callback:v=>`$${v}`}
+        }
+      }
+    }
+  });
+}
+
+function resetScenario(){
+  activeScenario = null;
+  ['hormuz','redsea','opec'].forEach(k => document.getElementById(`card-${k}`)?.classList.remove('active'));
+  if(chart){chart.destroy();chart=null;}
+  document.getElementById('output-area').innerHTML = `
+    <div class="loading-state">
+      <div>Select a scenario above to run the ML + Econometric cascade model</div>
+      <div style="margin-top:8px;font-size:11px;">Model trained on 16 historical disruption events · Validated against Abqaiq (81.4% accuracy)</div>
+    </div>
+  `;
+}
+
+window.onload = () => {
+  loadRiskData();
+  // The backend now refreshes its risk cache continuously in the background
+  // (Section: main.py _background_refresh_loop), matching the Live Map's own
+  // cadence — without this, this page only ever saw data from the moment it
+  // was first opened.
+  setInterval(loadRiskData, 2*60*1000);
+};
+</script>
+</body>
+</html>
